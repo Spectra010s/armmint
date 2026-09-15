@@ -81,7 +81,10 @@ export interface Transaction {
   updatedAt: Date;
 }
 
-const MINT_JOB_TRANSITIONS: Record<MintJobState, readonly MintJobState[]> = {
+export const MINT_JOB_TRANSITIONS: Record<
+  MintJobState,
+  readonly MintJobState[]
+> = {
   SCHEDULED: ["CLAIMED", "CANCELLED"],
   CLAIMED: ["SIMULATING", "FAILED", "CANCELLED"],
   SIMULATING: ["SIGNING", "FAILED"],
@@ -95,7 +98,7 @@ const MINT_JOB_TRANSITIONS: Record<MintJobState, readonly MintJobState[]> = {
   CANCELLED: [],
 };
 
-const EXECUTION_ATTEMPT_TRANSITIONS: Record<
+export const EXECUTION_ATTEMPT_TRANSITIONS: Record<
   ExecutionAttemptState,
   readonly ExecutionAttemptState[]
 > = {
@@ -106,7 +109,7 @@ const EXECUTION_ATTEMPT_TRANSITIONS: Record<
   FAILED: [],
 };
 
-const TRANSACTION_TRANSITIONS: Record<
+export const TRANSACTION_TRANSITIONS: Record<
   TransactionState,
   readonly TransactionState[]
 > = {
