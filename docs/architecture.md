@@ -55,70 +55,34 @@ Provides the primary user interface for onboarding, job creation/status, cancell
 
 ### User
 
-Represents the authenticated ArmMint account.
-
-- `id`
-- authentication/account linkage
-- optional Telegram identity
-- timestamps
-
-A User owns their Wallet and MintJobs.
+Represents the authenticated ArmMint account. A User owns their Wallet and MintJobs. Authentication provider records and Telegram linkage belong to the account layer rather than transaction execution.
 
 ### Wallet
 
-Represents the single V1 burner wallet associated with a User.
-
-- `id`
-- `userId`
-- public address
-- encrypted private-key material
-- encryption metadata/version
-- timestamps
-
-The plaintext private key exists only in server memory for the minimum time needed for signing.
+Represents the single V1 burner wallet associated with a User. A Wallet cannot be used to execute a job owned by another User. The plaintext private key exists only in server memory for the minimum time needed for signing.
 
 ### MintJob
 
-Represents one requested mint operation.
-
-- `id`
-- `userId`
-- `walletId`
-- target contract/chain/mint parameters
-- scheduled execution time
-- lifecycle state
-- idempotency key
-- timestamps
-
-A MintJob can produce execution attempts, but a successful job must resolve to one successful transaction outcome.
+Represents one logical requested mint operation. It owns a stable `idempotencyKey` that identifies that logical execution across worker claims, retries, restarts, and reconciliation. A MintJob can produce multiple ExecutionAttempts, but only one successful logical mint outcome is allowed.
 
 ### ExecutionAttempt
 
-Represents one worker attempt to execute a MintJob.
-
-- `id`
-- `mintJobId`
-- attempt number
-- execution state
-- error/failure metadata safe for logs
-- timestamps
-
-Retries of the same logical execution remain associated with the same MintJob and must not accidentally create a second logical mint.
+Represents a bounded worker attempt to execute a MintJob. Attempt numbers are monotonically increasing per job and must be unique within that job. An attempt never changes ownership or moves to another MintJob.
 
 ### Transaction
 
-Represents an on-chain transaction associated with an execution attempt.
+Represents one submitted or prepared on-chain transaction associated with an ExecutionAttempt. A replacement transaction is part of the same logical execution and must reuse the original nonce rather than becoming a second mint attempt.
 
-- `id`
-- `executionAttemptId`
-- chain/network
-- transaction hash
-- nonce
-- gas parameters
-- transaction state
-- timestamps
+## Ownership and lifecycle invariants
 
-Replacement transactions use the same nonce and are tracked as part of the same logical execution.
+- A Wallet belongs to exactly one User in V1.
+- A MintJob belongs to one User and references a Wallet owned by that same User.
+- An ExecutionAttempt belongs to exactly one MintJob.
+- A Transaction belongs to exactly one ExecutionAttempt.
+- Terminal entity states cannot transition back into active states.
+- Cancellation is only allowed before transaction execution has progressed beyond a safely cancellable point.
+- Worker retries do not create a new logical MintJob.
+- A successful logical execution prevents another successful execution for the same MintJob identity.
 
 ## MintJob state machine
 
@@ -153,28 +117,56 @@ CONFIRMING
 SUCCEEDED
 ```
 
-Terminal states are `SUCCEEDED`, `FAILED`, and `CANCELLED`.
+Terminal MintJob states are `SUCCEEDED`, `FAILED`, and `CANCELLED`.
 
-The exact persistence model may represent some execution phases as attempt/transaction states rather than duplicating every transient state on MintJob. The important invariant is that invalid transitions are rejected and worker restarts can recover from persisted state.
+## ExecutionAttempt state machine
 
-## Idempotency
+```text
+PENDING
+   │
+   ▼
+RUNNING ─────────► SUCCEEDED
+   │
+   ├─────────────► FAILED
+   │
+   ▼
+RETRYING ────────► RUNNING
+```
 
-Each MintJob has a stable execution identity/idempotency key. Worker retries must first inspect persisted execution/transaction state before creating a new transaction.
+`SUCCEEDED` and `FAILED` are terminal attempt states. A retry represents continuation of the same logical MintJob execution, not permission to duplicate a mint.
 
-A network timeout after submission must be treated as an unknown outcome until the existing transaction can be reconciled. The worker must not assume "no response" means "not submitted".
+## Transaction state machine
 
-Database uniqueness constraints and atomic claim/update operations are part of the duplicate-execution protection.
+```text
+CREATED
+   │
+   ▼
+SUBMITTED ───────► REPLACED
+   │              DROPPED
+   │              REVERTED
+   ▼
+CONFIRMING ──────► REPLACED
+   │              DROPPED
+   │              REVERTED
+   ▼
+CONFIRMED
+```
+
+`CONFIRMED`, `REPLACED`, `DROPPED`, and `REVERTED` are terminal states for an individual transaction record. A replacement transaction uses the same nonce and remains tied to the same logical MintJob execution.
+
+The exact persistence model may represent some execution phases as attempt/transaction states rather than duplicating every transient state on MintJob. Invalid transitions must be rejected and worker restarts must recover from persisted state.
+
+## Idempotency and execution identity
+
+`MintJob.idempotencyKey` is the stable identity of one requested mint. It is created once and is never regenerated merely because a worker retries or restarts.
+
+Before creating or submitting transaction material, the worker must reconcile persisted attempts and transactions for that identity. A network timeout after submission is an unknown outcome, not evidence that submission failed. Existing transaction state must be reconciled before another submission is considered.
+
+The database layer must enforce the invariants with uniqueness constraints and atomic claim/update operations. In particular, attempt numbers are unique per MintJob, execution claims cannot be concurrently won by multiple workers, and transaction nonce/replacement records remain associated with the same logical execution.
 
 ## Sell Arm extension
 
-Automated selling is not part of V1. The execution layer is nevertheless designed around a generic execution request so a future Sell Arm can reuse:
-
-- wallet/key handling
-- nonce management
-- transaction submission
-- replacement/retry logic
-- idempotency
-- transaction tracking
+Automated selling is not part of V1. The execution layer is nevertheless designed around a generic execution request so a future Sell Arm can reuse wallet/key handling, nonce management, transaction submission, replacement/retry logic, idempotency, and transaction tracking.
 
 The future feature should add a new job/action type rather than create a second transaction engine.
 
