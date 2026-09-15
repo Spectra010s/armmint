@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "oxlint",
     "pin": "pkgpin",
     "postinstall": "next typegen"
   },
@@ -20,8 +20,7 @@
     "@types/node": "26.5.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "eslint": "10.0.3",
-    "eslint-config-next": "16.3.5",
+    "oxlint": "1.83.0",
     "pkgpin": "0.3.0",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3"
