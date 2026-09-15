@@ -4,7 +4,7 @@ import { test } from "node:test";
 import {
   decryptPrivateKey,
   encryptPrivateKey,
-} from "./wallet-crypto";
+} from "./wallet-crypto.ts";
 
 const encryptionKey = Buffer.alloc(32, 7);
 const privateKey = `0x${"ab".repeat(32)}`;
