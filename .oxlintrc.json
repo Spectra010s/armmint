@@ -5,6 +5,10 @@
     "correctness": "error",
     "suspicious": "warn"
   },
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "react/jsx-uses-react": "off"
+  },
   "ignorePatterns": [
     ".next/**",
     "out/**",
