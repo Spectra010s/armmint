@@ -1,5 +1,5 @@
 {
   "$schema": "https://unpkg.com/pkgpin/schema.json",
   "prefix": "",
-  "exclude": ["typescript", "eslint"]
+  "exclude": ["typescript"]
 }
