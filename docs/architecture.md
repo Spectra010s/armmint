@@ -165,6 +165,22 @@ Before creating or submitting transaction material, the worker must reconcile pe
 
 The database layer must enforce the invariants with uniqueness constraints and atomic claim/update operations. In particular, attempt numbers are unique per MintJob, execution claims cannot be concurrently won by multiple workers, and transaction nonce/replacement records remain associated with the same logical execution.
 
+## Configuration boundaries
+
+ArmMint V1 has no required public runtime configuration. `DATABASE_URL`, `BETTER_AUTH_SECRET`, Google OAuth credentials, `ARMINT_ENCRYPTION_KEY`, Telegram credentials, and `RPC_URL` are server-only. They must not use the `NEXT_PUBLIC_` prefix or be imported into client components.
+
+Server configuration is read through `lib/server/config.ts`, which is guarded by `server-only`. Required values are validated before use; database/RPC values must be valid URLs and the wallet encryption key must decode to exactly 32 bytes. Invalid configuration must fail with the variable name and validation problem, never the secret value.
+
+### Private-key boundary
+
+The authenticated sensitive setup surface may accept a burner-wallet private key only over the server boundary. The plaintext value must be passed directly to the encryption service, must never be persisted or returned to the client, and must be released from application references after the operation completes. Workers may decrypt it only immediately before signing. Telegram handlers must never accept private keys as ordinary chat input.
+
+### Logging and errors
+
+Logs and error payloads may include stable identifiers such as job IDs, attempt IDs, transaction hashes, state names, and non-secret error codes. They must not include private keys, decrypted or encrypted key material, encryption IV/auth tags, signed raw transactions, auth/session secrets, OAuth secrets, Telegram tokens/webhook secrets, database credentials, or RPC credentials embedded in URLs.
+
+Errors crossing an API or Telegram boundary must be sanitized. Internal errors may identify which configuration variable is invalid but must never echo its value. Secret-bearing request bodies and configuration objects must not be logged wholesale.
+
 ## Sell Arm extension
 
 Automated selling is not part of V1. The execution layer is nevertheless designed around a generic execution request so a future Sell Arm can reuse wallet/key handling, nonce management, transaction submission, replacement/retry logic, idempotency, and transaction tracking.
