@@ -71,7 +71,7 @@ Represents a bounded worker attempt to execute a MintJob. Attempt numbers are mo
 
 ### Transaction
 
-Represents one submitted or prepared on-chain transaction associated with an ExecutionAttempt. A replacement transaction is part of the same logical execution and must reuse the original nonce rather than becoming a second mint attempt.
+Represents one prepared or submitted on-chain transaction associated with an ExecutionAttempt. When a submitted transaction is replaced, the old Transaction record becomes `REPLACED` and a new Transaction record tracks the replacement hash using the same nonce. Both remain under the same logical MintJob execution.
 
 ## Ownership and lifecycle invariants
 
@@ -152,7 +152,7 @@ CONFIRMING ──────► REPLACED
 CONFIRMED
 ```
 
-`CONFIRMED`, `REPLACED`, `DROPPED`, and `REVERTED` are terminal states for an individual transaction record. A replacement transaction uses the same nonce and remains tied to the same logical MintJob execution.
+`CONFIRMED`, `REPLACED`, `DROPPED`, and `REVERTED` are terminal states for an individual transaction record. A `REPLACED` record points conceptually to a successor transaction created with the same nonce; persistence for that relationship is defined in the database work.
 
 The exact persistence model may represent some execution phases as attempt/transaction states rather than duplicating every transient state on MintJob. Invalid transitions must be rejected and worker restarts must recover from persisted state.
 
