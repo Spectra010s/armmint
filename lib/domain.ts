@@ -81,10 +81,7 @@ export interface Transaction {
   updatedAt: Date;
 }
 
-export const MINT_JOB_TRANSITIONS: Record<
-  MintJobState,
-  readonly MintJobState[]
-> = {
+export const MINT_JOB_TRANSITIONS = {
   SCHEDULED: ["CLAIMED", "CANCELLED"],
   CLAIMED: ["SIMULATING", "FAILED", "CANCELLED"],
   SIMULATING: ["SIGNING", "FAILED"],
@@ -96,23 +93,17 @@ export const MINT_JOB_TRANSITIONS: Record<
   SUCCEEDED: [],
   FAILED: [],
   CANCELLED: [],
-};
+} as const satisfies Record<MintJobState, readonly MintJobState[]>;
 
-export const EXECUTION_ATTEMPT_TRANSITIONS: Record<
-  ExecutionAttemptState,
-  readonly ExecutionAttemptState[]
-> = {
+export const EXECUTION_ATTEMPT_TRANSITIONS = {
   PENDING: ["RUNNING", "FAILED"],
   RUNNING: ["RETRYING", "SUCCEEDED", "FAILED"],
   RETRYING: ["RUNNING", "FAILED"],
   SUCCEEDED: [],
   FAILED: [],
-};
+} as const satisfies Record<ExecutionAttemptState, readonly ExecutionAttemptState[]>;
 
-export const TRANSACTION_TRANSITIONS: Record<
-  TransactionState,
-  readonly TransactionState[]
-> = {
+export const TRANSACTION_TRANSITIONS = {
   CREATED: ["SUBMITTED", "DROPPED"],
   SUBMITTED: ["CONFIRMING", "REPLACED", "DROPPED", "REVERTED"],
   CONFIRMING: ["CONFIRMED", "REPLACED", "DROPPED", "REVERTED"],
@@ -120,7 +111,7 @@ export const TRANSACTION_TRANSITIONS: Record<
   REPLACED: [],
   DROPPED: [],
   REVERTED: [],
-};
+} as const satisfies Record<TransactionState, readonly TransactionState[]>;
 
 function canTransition<TState extends string>(
   transitions: Record<TState, readonly TState[]>,
