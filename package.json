@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "pkgpin": "pkgpin"
+    "pin": "pkgpin"
   },
   "dependencies": {
     "next": "16.3.5",
