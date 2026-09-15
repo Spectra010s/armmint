@@ -80,7 +80,7 @@ Represents one prepared or submitted on-chain transaction associated with an Exe
 - An ExecutionAttempt belongs to exactly one MintJob.
 - A Transaction belongs to exactly one ExecutionAttempt.
 - Terminal entity states cannot transition back into active states.
-- Cancellation is only allowed before transaction execution has progressed beyond a safely cancellable point.
+- Cancellation is only allowed while a job is `SCHEDULED` or `CLAIMED`; once simulation/signing begins the worker owns the lifecycle and must reconcile it instead of accepting a user cancellation.
 - Worker retries do not create a new logical MintJob.
 - A successful logical execution prevents another successful execution for the same MintJob identity.
 
@@ -116,7 +116,7 @@ CONFIRMING
 RETRYING ────────► SUBMITTING / SUBMITTED / CONFIRMING
 ```
 
-`SUBMITTING`, `SUBMITTED`, and `CONFIRMING` may enter `RETRYING` when the persisted transaction state requires another safe execution/reconciliation step. A retry never resets the job to an earlier pre-signing phase.
+A `SCHEDULED` job may also transition directly to `CANCELLED`. `SUBMITTING`, `SUBMITTED`, and `CONFIRMING` may enter `RETRYING` when persisted transaction state requires another safe execution/reconciliation step. A retry never resets the job to an earlier pre-signing phase.
 
 Terminal MintJob states are `SUCCEEDED`, `FAILED`, and `CANCELLED`.
 
@@ -134,7 +134,7 @@ RUNNING ─────────► SUCCEEDED
 RETRYING ────────► RUNNING
 ```
 
-`SUCCEEDED` and `FAILED` are terminal attempt states. A retry represents continuation of the same logical MintJob execution, not permission to duplicate a mint.
+A `PENDING` attempt may fail before it reaches `RUNNING`. `SUCCEEDED` and `FAILED` are terminal attempt states. A retry represents continuation of the same logical MintJob execution, not permission to duplicate a mint.
 
 ## Transaction state machine
 
@@ -153,7 +153,7 @@ CONFIRMING ──────► REPLACED
 CONFIRMED
 ```
 
-`CONFIRMED`, `REPLACED`, `DROPPED`, and `REVERTED` are terminal states for an individual transaction record. A `REPLACED` record has a successor transaction with the same nonce; that successor references the old record through `replacesTransactionId`.
+A `CREATED` transaction may become `DROPPED` if it is abandoned before successful submission. `CONFIRMED`, `REPLACED`, `DROPPED`, and `REVERTED` are terminal states for an individual transaction record. A `REPLACED` record has a successor transaction with the same nonce; that successor references the old record through `replacesTransactionId`.
 
 The exact persistence model may represent some execution phases as attempt/transaction states rather than duplicating every transient state on MintJob. Invalid transitions must be rejected and worker restarts must recover from persisted state.
 
