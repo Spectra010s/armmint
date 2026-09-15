@@ -72,6 +72,7 @@ export interface ExecutionAttempt {
 export interface Transaction {
   id: string;
   executionAttemptId: string;
+  replacesTransactionId?: string;
   chainId: number;
   hash?: string;
   nonce: number;
