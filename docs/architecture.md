@@ -106,16 +106,17 @@ SUBMITTING
    ▼
 SUBMITTED
    │
-   ├──────────────► RETRYING ─────► SUBMITTED
-   │
    ▼
 CONFIRMING
    │
+   ├──────────────► SUCCEEDED
    ├──────────────► FAILED
    │
    ▼
-SUCCEEDED
+RETRYING ────────► SUBMITTING / SUBMITTED / CONFIRMING
 ```
+
+`SUBMITTING`, `SUBMITTED`, and `CONFIRMING` may enter `RETRYING` when the persisted transaction state requires another safe execution/reconciliation step. A retry never resets the job to an earlier pre-signing phase.
 
 Terminal MintJob states are `SUCCEEDED`, `FAILED`, and `CANCELLED`.
 
