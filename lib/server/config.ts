@@ -26,9 +26,7 @@ function requireNonEmpty(name: (typeof REQUIRED_ENV)[number]): string {
 }
 
 function validateUrl(name: "DATABASE_URL" | "RPC_URL", value: string): void {
-  try {
-    new URL(value);
-  } catch {
+  if (!URL.canParse(value)) {
     throw new Error(`Invalid URL in server environment variable: ${name}`);
   }
 }
