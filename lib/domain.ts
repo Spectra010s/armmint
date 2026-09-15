@@ -94,20 +94,94 @@ const MINT_JOB_TRANSITIONS: Record<MintJobState, readonly MintJobState[]> = {
   CANCELLED: [],
 };
 
+const EXECUTION_ATTEMPT_TRANSITIONS: Record<
+  ExecutionAttemptState,
+  readonly ExecutionAttemptState[]
+> = {
+  PENDING: ["RUNNING", "FAILED"],
+  RUNNING: ["RETRYING", "SUCCEEDED", "FAILED"],
+  RETRYING: ["RUNNING", "FAILED"],
+  SUCCEEDED: [],
+  FAILED: [],
+};
+
+const TRANSACTION_TRANSITIONS: Record<
+  TransactionState,
+  readonly TransactionState[]
+> = {
+  CREATED: ["SUBMITTED", "DROPPED"],
+  SUBMITTED: ["CONFIRMING", "REPLACED", "DROPPED", "REVERTED"],
+  CONFIRMING: ["CONFIRMED", "REPLACED", "DROPPED", "REVERTED"],
+  CONFIRMED: [],
+  REPLACED: [],
+  DROPPED: [],
+  REVERTED: [],
+};
+
+function canTransition<TState extends string>(
+  transitions: Record<TState, readonly TState[]>,
+  from: TState,
+  to: TState,
+): boolean {
+  return transitions[from].includes(to);
+}
+
+function transition<TState extends string>(
+  entity: string,
+  transitions: Record<TState, readonly TState[]>,
+  from: TState,
+  to: TState,
+): TState {
+  if (!canTransition(transitions, from, to)) {
+    throw new Error(`Invalid ${entity} transition: ${from} -> ${to}`);
+  }
+
+  return to;
+}
+
 export function canTransitionMintJob(
   from: MintJobState,
   to: MintJobState,
 ): boolean {
-  return MINT_JOB_TRANSITIONS[from].includes(to);
+  return canTransition(MINT_JOB_TRANSITIONS, from, to);
 }
 
 export function transitionMintJob(
   from: MintJobState,
   to: MintJobState,
 ): MintJobState {
-  if (!canTransitionMintJob(from, to)) {
-    throw new Error(`Invalid MintJob transition: ${from} -> ${to}`);
-  }
+  return transition("MintJob", MINT_JOB_TRANSITIONS, from, to);
+}
 
-  return to;
+export function canTransitionExecutionAttempt(
+  from: ExecutionAttemptState,
+  to: ExecutionAttemptState,
+): boolean {
+  return canTransition(EXECUTION_ATTEMPT_TRANSITIONS, from, to);
+}
+
+export function transitionExecutionAttempt(
+  from: ExecutionAttemptState,
+  to: ExecutionAttemptState,
+): ExecutionAttemptState {
+  return transition(
+    "ExecutionAttempt",
+    EXECUTION_ATTEMPT_TRANSITIONS,
+    from,
+    to,
+  );
+}
+
+export function canTransitionTransaction(
+  from: TransactionState,
+  to: TransactionState,
+): boolean {
+  return canTransition(TRANSACTION_TRANSITIONS, from, to);
+}
+
+export function transitionTransaction(
+  from: TransactionState,
+  to: TransactionState,
+): TransactionState {
+  return transition("Transaction", TRANSACTION_TRANSITIONS, from, to);
 }
