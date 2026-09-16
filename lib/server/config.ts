@@ -31,7 +31,7 @@ function validateUrl(name: "DATABASE_URL" | "RPC_URL", value: string): void {
   }
 }
 
-function validateEncryptionKey(value: string): void {
+function decodeEncryptionKey(value: string): Buffer {
   const decoded = Buffer.from(value, "base64");
   const canonical = decoded.toString("base64").replace(/=+$/, "");
   const supplied = value.replace(/=+$/, "");
@@ -41,6 +41,12 @@ function validateEncryptionKey(value: string): void {
       "ARMINT_ENCRYPTION_KEY must be a base64-encoded 32-byte key",
     );
   }
+
+  return decoded;
+}
+
+export function getWalletEncryptionKey(): Buffer {
+  return decodeEncryptionKey(requireNonEmpty("ARMINT_ENCRYPTION_KEY"));
 }
 
 export function getServerConfig(): ServerConfig {
@@ -50,7 +56,7 @@ export function getServerConfig(): ServerConfig {
 
   validateUrl("DATABASE_URL", config.DATABASE_URL);
   validateUrl("RPC_URL", config.RPC_URL);
-  validateEncryptionKey(config.ARMINT_ENCRYPTION_KEY);
+  decodeEncryptionKey(config.ARMINT_ENCRYPTION_KEY);
 
   return config;
 }
