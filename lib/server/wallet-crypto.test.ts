@@ -8,6 +8,7 @@ import {
 
 const encryptionKey = Buffer.alloc(32, 7);
 const privateKey = `0x${"ab".repeat(32)}`;
+const authenticationFailure = /Encrypted wallet key authentication failed/;
 
 test("encrypts and decrypts a private key", () => {
   const encrypted = encryptPrivateKey(privateKey, encryptionKey);
@@ -30,11 +31,13 @@ test("rejects tampered ciphertext", () => {
   const ciphertext = Buffer.from(encrypted.encryptedPrivateKey, "base64");
   ciphertext[0] ^= 1;
 
-  assert.throws(() =>
-    decryptPrivateKey(
-      { ...encrypted, encryptedPrivateKey: ciphertext.toString("base64") },
-      encryptionKey,
-    ),
+  assert.throws(
+    () =>
+      decryptPrivateKey(
+        { ...encrypted, encryptedPrivateKey: ciphertext.toString("base64") },
+        encryptionKey,
+      ),
+    authenticationFailure,
   );
 });
 
@@ -43,11 +46,13 @@ test("rejects tampered authentication tag", () => {
   const tag = Buffer.from(encrypted.encryptionAuthTag, "base64");
   tag[0] ^= 1;
 
-  assert.throws(() =>
-    decryptPrivateKey(
-      { ...encrypted, encryptionAuthTag: tag.toString("base64") },
-      encryptionKey,
-    ),
+  assert.throws(
+    () =>
+      decryptPrivateKey(
+        { ...encrypted, encryptionAuthTag: tag.toString("base64") },
+        encryptionKey,
+      ),
+    authenticationFailure,
   );
 });
 
@@ -56,11 +61,13 @@ test("rejects tampered IV", () => {
   const iv = Buffer.from(encrypted.encryptionIv, "base64");
   iv[0] ^= 1;
 
-  assert.throws(() =>
-    decryptPrivateKey(
-      { ...encrypted, encryptionIv: iv.toString("base64") },
-      encryptionKey,
-    ),
+  assert.throws(
+    () =>
+      decryptPrivateKey(
+        { ...encrypted, encryptionIv: iv.toString("base64") },
+        encryptionKey,
+      ),
+    authenticationFailure,
   );
 });
 
