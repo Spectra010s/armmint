@@ -89,15 +89,19 @@ export function decryptPrivateKey(
     encrypted.encryptedPrivateKey,
   );
 
-  const decipher = createDecipheriv(ALGORITHM, encryptionKey, iv, {
-    authTagLength: AUTH_TAG_LENGTH_BYTES,
-  });
-  decipher.setAuthTag(authTag);
+  try {
+    const decipher = createDecipheriv(ALGORITHM, encryptionKey, iv, {
+      authTagLength: AUTH_TAG_LENGTH_BYTES,
+    });
+    decipher.setAuthTag(authTag);
 
-  const plaintext = Buffer.concat([
-    decipher.update(ciphertext),
-    decipher.final(),
-  ]);
+    const plaintext = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]);
 
-  return plaintext.toString("utf8");
+    return plaintext.toString("utf8");
+  } catch {
+    throw new Error("Encrypted wallet key authentication failed");
+  }
 }
