@@ -2,6 +2,7 @@ import "server-only";
 
 const REQUIRED_ENV = [
   "DATABASE_URL",
+  "BETTER_AUTH_URL",
   "BETTER_AUTH_SECRET",
   "GOOGLE_CLIENT_ID",
   "GOOGLE_CLIENT_SECRET",
@@ -25,7 +26,10 @@ function requireNonEmpty(name: (typeof REQUIRED_ENV)[number]): string {
   return value;
 }
 
-function validateUrl(name: "DATABASE_URL" | "RPC_URL", value: string): void {
+function validateUrl(
+  name: "DATABASE_URL" | "BETTER_AUTH_URL" | "RPC_URL",
+  value: string,
+): void {
   if (!URL.canParse(value)) {
     throw new Error(`Invalid URL in server environment variable: ${name}`);
   }
@@ -55,6 +59,7 @@ export function getServerConfig(): ServerConfig {
   ) as ServerConfig;
 
   validateUrl("DATABASE_URL", config.DATABASE_URL);
+  validateUrl("BETTER_AUTH_URL", config.BETTER_AUTH_URL);
   validateUrl("RPC_URL", config.RPC_URL);
   decodeEncryptionKey(config.ARMINT_ENCRYPTION_KEY);
 
