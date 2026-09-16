@@ -9,7 +9,7 @@ const REQUIRED_ENV = [
   "ARMINT_ENCRYPTION_KEY",
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_WEBHOOK_SECRET",
-  "RPC_URL",
+  "BASE_RPC_URL",
 ] as const;
 
 export type ServerConfig = {
@@ -27,7 +27,7 @@ function requireNonEmpty(name: (typeof REQUIRED_ENV)[number]): string {
 }
 
 function validateUrl(
-  name: "DATABASE_URL" | "BETTER_AUTH_URL" | "RPC_URL",
+  name: "DATABASE_URL" | "BETTER_AUTH_URL" | "BASE_RPC_URL",
   value: string,
 ): void {
   if (!URL.canParse(value)) {
@@ -60,7 +60,7 @@ export function getServerConfig(): ServerConfig {
 
   validateUrl("DATABASE_URL", config.DATABASE_URL);
   validateUrl("BETTER_AUTH_URL", config.BETTER_AUTH_URL);
-  validateUrl("RPC_URL", config.RPC_URL);
+  validateUrl("BASE_RPC_URL", config.BASE_RPC_URL);
   decodeEncryptionKey(config.ARMINT_ENCRYPTION_KEY);
 
   return config;
