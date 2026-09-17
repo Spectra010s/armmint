@@ -87,6 +87,44 @@ export const verifications = pgTable(
   ],
 );
 
+export const telegramAccounts = pgTable(
+  "telegram_accounts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    telegramUserId: bigint("telegram_user_id", { mode: "bigint" }).notNull(),
+    username: text("username"),
+    linkedAt: timestamp("linked_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("telegram_accounts_user_id_unique").on(table.userId),
+    uniqueIndex("telegram_accounts_telegram_user_id_unique").on(table.telegramUserId),
+  ],
+);
+
+export const telegramLinkTokens = pgTable(
+  "telegram_link_tokens",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenDigest: text("token_digest").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("telegram_link_tokens_digest_unique").on(table.tokenDigest),
+    index("telegram_link_tokens_user_id_idx").on(table.userId),
+    index("telegram_link_tokens_expires_at_idx").on(table.expiresAt),
+  ],
+);
+
 export const mintJobState = pgEnum("mint_job_state", [
   "SCHEDULED",
   "CLAIMED",
