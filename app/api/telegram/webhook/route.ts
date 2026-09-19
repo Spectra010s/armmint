@@ -34,14 +34,28 @@ export async function POST(request: NextRequest) {
         ? "This ArmMint link is invalid or expired. Generate a new link from ArmMint."
         : "This Telegram or ArmMint account is already linked. Unlink it before linking another account.";
 
-  await fetch(
-    `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/sendMessage`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: message.chatId, text }),
-    },
-  );
+  // Notification delivery is best-effort. The link result is already committed,
+  // so a Telegram API failure must not make Telegram retry the processed update.
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chat_id: message.chatId, text }),
+      },
+    );
+
+    if (!response.ok) {
+      console.error("Failed to send Telegram link notification", {
+        status: response.status,
+      });
+    }
+  } catch (error) {
+    console.error("Failed to send Telegram link notification", {
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }
