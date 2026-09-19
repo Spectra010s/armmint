@@ -54,10 +54,12 @@ export async function consumeTelegramLinkToken(
 ): Promise<TelegramLinkResult> {
   const tokenDigest = digestTelegramLinkToken(rawToken);
 
-  return db.transaction(async (tx) => {
-    const [token] = await tx
-      .select({ id: telegramLinkTokens.id, userId: telegramLinkTokens.userId })
-      .from(telegramLinkTokens)
+  // Commit the conditional update before touching accounts. A link conflict or
+  // failed account transaction must never make a presented token reusable.
+  const token = await db.transaction(async (tx) => {
+    const [consumed] = await tx
+      .update(telegramLinkTokens)
+      .set({ consumedAt: now })
       .where(
         and(
           eq(telegramLinkTokens.tokenDigest, tokenDigest),
@@ -65,10 +67,29 @@ export async function consumeTelegramLinkToken(
           gt(telegramLinkTokens.expiresAt, now),
         ),
       )
-      .for("update")
-      .limit(1);
+      .returning({ userId: telegramLinkTokens.userId });
 
-    if (!token) return { status: "invalid_token" };
+    return consumed;
+  });
+
+  if (!token) return { status: "invalid_token" };
+
+  return db.transaction(async (tx) => {
+    // The unique indexes arbitrate races on either identity. Never overwrite
+    // an existing link, including when another request wins after consumption.
+    const [linked] = await tx
+      .insert(telegramAccounts)
+      .values({
+        id: randomUUID(),
+        userId: token.userId,
+        telegramUserId: identity.id,
+        username: identity.username ?? null,
+        linkedAt: now,
+      })
+      .onConflictDoNothing()
+      .returning({ userId: telegramAccounts.userId });
+
+    if (linked) return { status: "linked", userId: linked.userId };
 
     const [telegramOwner] = await tx
       .select({ userId: telegramAccounts.userId })
@@ -86,34 +107,11 @@ export async function consumeTelegramLinkToken(
       .where(eq(telegramAccounts.userId, token.userId))
       .limit(1);
 
-    if (existingForUser && existingForUser.telegramUserId !== identity.id) {
-      return { status: "user_already_linked" };
+    if (existingForUser?.telegramUserId === identity.id) {
+      return { status: "linked", userId: token.userId };
     }
 
-    if (!existingForUser) {
-      await tx.insert(telegramAccounts).values({
-        id: randomUUID(),
-        userId: token.userId,
-        telegramUserId: identity.id,
-        username: identity.username ?? null,
-        linkedAt: now,
-      });
-    }
-
-    const consumed = await tx
-      .update(telegramLinkTokens)
-      .set({ consumedAt: now })
-      .where(
-        and(
-          eq(telegramLinkTokens.id, token.id),
-          isNull(telegramLinkTokens.consumedAt),
-        ),
-      )
-      .returning({ id: telegramLinkTokens.id });
-
-    if (consumed.length !== 1) return { status: "invalid_token" };
-
-    return { status: "linked", userId: token.userId };
+    return { status: "user_already_linked" };
   });
 }
 

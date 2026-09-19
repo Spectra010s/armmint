@@ -7,7 +7,7 @@ import {
   generateTelegramLinkToken,
   telegramLinkTokenExpiresAt,
   telegramLinkTokenMatches,
-} from "./telegram-link-token";
+} from "./telegram-link-token.ts";
 
 test("generates unique base64url Telegram link tokens", () => {
   const first = generateTelegramLinkToken();

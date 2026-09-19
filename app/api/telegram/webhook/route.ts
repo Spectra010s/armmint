@@ -2,15 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getServerConfig } from "@/lib/server/config";
 import { consumeTelegramLinkToken } from "@/lib/server/telegram-link-service";
-import { parseTelegramStartToken } from "@/lib/server/telegram-webhook";
-
-type TelegramUpdate = {
-  message?: {
-    chat?: { id?: number };
-    from?: { id?: number; username?: string };
-    text?: string;
-  };
-};
+import { parseTelegramLinkMessage } from "@/lib/server/telegram-webhook";
 
 export async function POST(request: NextRequest) {
   const config = getServerConfig();
@@ -20,43 +12,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let update: TelegramUpdate;
+  let update: unknown;
   try {
-    update = (await request.json()) as TelegramUpdate;
+    update = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid update" }, { status: 400 });
   }
 
-  const message = update.message;
-  const token = parseTelegramStartToken(message?.text);
-  const telegramUserId = message?.from?.id;
+  const message = parseTelegramLinkMessage(update);
 
-  if (!token || !Number.isSafeInteger(telegramUserId)) {
+  if (!message) {
     return NextResponse.json({ ok: true });
   }
 
-  const result = await consumeTelegramLinkToken(token, {
-    id: BigInt(telegramUserId!),
-    username: message?.from?.username ?? null,
-  });
+  const result = await consumeTelegramLinkToken(message.token, message.identity);
 
-  if (message?.chat?.id !== undefined) {
-    const text =
-      result.status === "linked"
-        ? "Your Telegram account is now linked to ArmMint."
-        : result.status === "invalid_token"
-          ? "This ArmMint link is invalid or expired. Generate a new link from ArmMint."
-          : "This Telegram or ArmMint account is already linked. Unlink it before linking another account.";
+  const text =
+    result.status === "linked"
+      ? "Your Telegram account is now linked to ArmMint."
+      : result.status === "invalid_token"
+        ? "This ArmMint link is invalid or expired. Generate a new link from ArmMint."
+        : "This Telegram or ArmMint account is already linked. Unlink it before linking another account.";
 
-    await fetch(
-      `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/sendMessage`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chat_id: message.chat.id, text }),
-      },
-    );
-  }
+  await fetch(
+    `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/sendMessage`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: message.chatId, text }),
+    },
+  );
 
   return NextResponse.json({ ok: true });
 }
