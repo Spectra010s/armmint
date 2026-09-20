@@ -15,6 +15,13 @@
       "when": 1789577355975,
       "tag": "0001_add_better_auth_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789862021407,
+      "tag": "0002_add_telegram_linking",
+      "breakpoints": true
     }
   ]
 }

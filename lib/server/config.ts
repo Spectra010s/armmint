@@ -8,6 +8,7 @@ const REQUIRED_ENV = [
   "GOOGLE_CLIENT_SECRET",
   "ARMINT_ENCRYPTION_KEY",
   "TELEGRAM_BOT_TOKEN",
+  "TELEGRAM_BOT_USERNAME",
   "TELEGRAM_WEBHOOK_SECRET",
   "BASE_RPC_URL",
 ] as const;
@@ -49,6 +50,14 @@ function decodeEncryptionKey(value: string): Buffer {
   return decoded;
 }
 
+function validateTelegramBotUsername(value: string): void {
+  const username = value.startsWith("@") ? value.slice(1) : value;
+
+  if (!/^[A-Za-z0-9_]{5,32}$/.test(username)) {
+    throw new Error("Invalid TELEGRAM_BOT_USERNAME");
+  }
+}
+
 export function getWalletEncryptionKey(): Buffer {
   return decodeEncryptionKey(requireNonEmpty("ARMINT_ENCRYPTION_KEY"));
 }
@@ -61,6 +70,7 @@ export function getServerConfig(): ServerConfig {
   validateUrl("DATABASE_URL", config.DATABASE_URL);
   validateUrl("BETTER_AUTH_URL", config.BETTER_AUTH_URL);
   validateUrl("BASE_RPC_URL", config.BASE_RPC_URL);
+  validateTelegramBotUsername(config.TELEGRAM_BOT_USERNAME);
   decodeEncryptionKey(config.ARMINT_ENCRYPTION_KEY);
 
   return config;
