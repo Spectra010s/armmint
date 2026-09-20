@@ -1,3 +1,4 @@
+import { BurnerWalletWarning } from "@/components/burner-wallet-warning";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { getCurrentSession } from "@/lib/server/session";
 
@@ -17,11 +18,14 @@ export default async function Home() {
         </div>
 
         {session?.user ? (
-          <div className="space-y-1 text-sm">
-            <p className="font-medium">Signed in as {session.user.name}</p>
-            <p className="text-zinc-500 dark:text-zinc-400">
-              {session.user.email}
-            </p>
+          <div className="space-y-5">
+            <div className="space-y-1 text-sm">
+              <p className="font-medium">Signed in as {session.user.name}</p>
+              <p className="text-zinc-500 dark:text-zinc-400">
+                {session.user.email}
+              </p>
+            </div>
+            <BurnerWalletWarning />
           </div>
         ) : (
           <GoogleSignInButton />
