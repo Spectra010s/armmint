@@ -26,7 +26,7 @@ export async function findRecoverableTransaction(mintJobId: string) {
         inArray(transactions.state, ["CREATED", "SUBMITTED", "CONFIRMING"]),
       ),
     )
-    .orderBy(desc(transactions.createdAt))
+    .orderBy(desc(transactions.createdAt), desc(transactions.id))
     .limit(1);
 
   return row ?? null;
@@ -62,7 +62,12 @@ export async function markTransactionSubmitted(
     const [transaction] = await tx
       .update(transactions)
       .set({ hash, state: "SUBMITTED", updatedAt: now })
-      .where(eq(transactions.id, transactionId))
+      .where(
+        and(
+          eq(transactions.id, transactionId),
+          inArray(transactions.state, ["CREATED", "SUBMITTED"]),
+        ),
+      )
       .returning();
 
     if (!transaction) return null;
@@ -145,7 +150,12 @@ export async function markReplacementSubmitted(
     const [replacement] = await tx
       .update(transactions)
       .set({ hash, state: "SUBMITTED", updatedAt: now })
-      .where(eq(transactions.id, replacementTransactionId))
+      .where(
+        and(
+          eq(transactions.id, replacementTransactionId),
+          eq(transactions.state, "CREATED"),
+        ),
+      )
       .returning();
 
     if (!replacement) return null;
