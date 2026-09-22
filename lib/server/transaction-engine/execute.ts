@@ -1,6 +1,7 @@
 import "server-only";
 
 import { beginConfirmation, completeConfirmedExecution } from "./completion";
+import { observeTransaction } from "./confirmation";
 import { TransactionEngineError } from "./errors";
 import { failExecution } from "./failure";
 import { recoverSubmission } from "./submission-recovery";
@@ -12,7 +13,6 @@ import {
 } from "./store";
 import type {
   TransactionChainAdapter,
-  TransactionReceiptResult,
   TransactionRequest,
 } from "./types";
 
@@ -32,8 +32,8 @@ export async function executeTransaction(
     const recovery = recoverSubmission(existing);
 
     if (recovery.kind === "await") {
-      const receipt = await adapter.waitForReceipt(recovery.hash);
-      await persistReceipt(existing.id, receipt);
+      const outcome = await observeTransaction(adapter, recovery.hash);
+      await persistOutcome(existing.id, outcome);
       return { transactionId: existing.id, hash: recovery.hash, recovered: true };
     }
 
@@ -57,8 +57,8 @@ export async function executeTransaction(
       );
     }
 
-    const receipt = await adapter.waitForReceipt(submitted.hash);
-    await persistReceipt(existing.id, receipt);
+    const outcome = await observeTransaction(adapter, submitted.hash);
+    await persistOutcome(existing.id, outcome);
     return { transactionId: existing.id, hash: submitted.hash, recovered: true };
   }
 
@@ -99,8 +99,8 @@ export async function executeTransaction(
     );
   }
 
-  const receipt = await adapter.waitForReceipt(submitted.hash);
-  await persistReceipt(transaction.id, receipt);
+  const outcome = await observeTransaction(adapter, submitted.hash);
+  await persistOutcome(transaction.id, outcome);
 
   return {
     transactionId: transaction.id,
@@ -109,11 +109,11 @@ export async function executeTransaction(
   };
 }
 
-async function persistReceipt(
+async function persistOutcome(
   transactionId: string,
-  receipt: TransactionReceiptResult,
+  outcome: Awaited<ReturnType<typeof observeTransaction>>,
 ) {
-  if (receipt.state === "CONFIRMED") {
+  if (outcome.kind === "confirmed") {
     await beginConfirmation(transactionId);
     const completed = await completeConfirmedExecution(transactionId);
     if (!completed) {
@@ -126,7 +126,17 @@ async function persistReceipt(
     return;
   }
 
-  const message = receipt.reason ?? "Transaction reverted";
+  if (outcome.kind === "dropped") {
+    const message = "Submitted transaction could not be found";
+    await failExecution(
+      transactionId,
+      { code: "CONFIRMATION_FAILED", message },
+      "DROPPED",
+    );
+    throw new TransactionEngineError("CONFIRMATION_FAILED", message, true);
+  }
+
+  const message = outcome.reason ?? "Transaction reverted";
   await failExecution(
     transactionId,
     { code: "REVERTED", message },
