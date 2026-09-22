@@ -17,7 +17,8 @@ export type SubmittedTransaction = {
 
 export type TransactionReceiptResult =
   | { state: "CONFIRMED"; hash: `0x${string}` }
-  | { state: "REVERTED"; hash: `0x${string}`; reason?: string };
+  | { state: "REVERTED"; hash: `0x${string}`; reason?: string }
+  | { state: "PENDING"; hash: `0x${string}` };
 
 export interface TransactionChainAdapter {
   simulate(request: TransactionRequest): Promise<void>;
