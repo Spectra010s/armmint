@@ -66,18 +66,20 @@ export async function markTransactionSubmitted(
 
     if (!transaction) return null;
 
+    const [attempt] = await tx
+      .select({ mintJobId: executionAttempts.mintJobId })
+      .from(executionAttempts)
+      .where(eq(executionAttempts.id, transaction.executionAttemptId))
+      .limit(1);
+
+    if (!attempt) {
+      throw new Error("Execution attempt not found for transaction");
+    }
+
     await tx
       .update(mintJobs)
       .set({ state: "SUBMITTED", updatedAt: now })
-      .where(
-        eq(
-          mintJobs.id,
-          tx
-            .select({ mintJobId: executionAttempts.mintJobId })
-            .from(executionAttempts)
-            .where(eq(executionAttempts.id, transaction.executionAttemptId)),
-        ),
-      );
+      .where(eq(mintJobs.id, attempt.mintJobId));
 
     return transaction;
   });
