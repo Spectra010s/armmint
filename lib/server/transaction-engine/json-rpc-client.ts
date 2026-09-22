@@ -4,12 +4,22 @@ export type JsonRpcTransport = {
   request<T>(method: string, params: readonly unknown[]): Promise<T>;
 };
 
+export type RawTransactionBroadcaster = {
+  broadcast(request: PreparedTransaction): Promise<{
+    rawTransaction: `0x${string}`;
+    nonce: number;
+  }>;
+};
+
 export type RpcReceipt = {
   transactionHash: `0x${string}`;
   status: "0x0" | "0x1";
 };
 
-export function createJsonRpcEvmClient(transport: JsonRpcTransport) {
+export function createJsonRpcEvmClient(
+  transport: JsonRpcTransport,
+  broadcaster?: RawTransactionBroadcaster,
+) {
   return {
     async simulate(request: TransactionRequest) {
       await transport.request("eth_call", [toRpcRequest(request), "pending"]);
@@ -24,9 +34,22 @@ export function createJsonRpcEvmClient(transport: JsonRpcTransport) {
     },
 
     async broadcast(request: PreparedTransaction) {
-      throw new Error(
-        "Raw transaction signing/broadcast must be supplied by the signing boundary",
+      if (!broadcaster) {
+        throw new Error(
+          "Raw transaction signing/broadcast must be supplied by the signing boundary",
+        );
+      }
+
+      const prepared = await broadcaster.broadcast(request);
+      if (prepared.nonce !== request.nonce) {
+        throw new Error("Signing boundary changed the reserved transaction nonce");
+      }
+
+      const hash = await transport.request<`0x${string}`>(
+        "eth_sendRawTransaction",
+        [prepared.rawTransaction],
       );
+      return { hash, nonce: request.nonce };
     },
 
     async receipt(hash: `0x${string}`) {
