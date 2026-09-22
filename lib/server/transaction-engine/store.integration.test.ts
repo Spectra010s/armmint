@@ -163,3 +163,50 @@ test("replacement refuses a different nonce", async () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0]?.id, original.id);
 });
+
+test("submitted persistence cannot overwrite a terminal transaction", async () => {
+  const reserved = await reserveTransaction("attempt-1", 84532, 9);
+  await markTransactionTerminal(reserved.id, "REVERTED");
+
+  assert.equal(
+    await markTransactionSubmitted(
+      reserved.id,
+      "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    ),
+    null,
+  );
+
+  const [persisted] = await db
+    .select()
+    .from(transactions)
+    .where(eq(transactions.id, reserved.id));
+  assert.equal(persisted?.state, "REVERTED");
+});
+
+test("replacement submission is idempotent against late duplicate writes", async () => {
+  const original = await reserveTransaction("attempt-1", 84532, 9);
+  await markTransactionSubmitted(
+    original.id,
+    "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  );
+  const replacement = await reserveReplacementTransaction(
+    original.id,
+    "attempt-1",
+    84532,
+    9,
+  );
+
+  assert.ok(
+    await markReplacementSubmitted(
+      replacement.id,
+      "0x1111111111111111111111111111111111111111111111111111111111111111",
+    ),
+  );
+  assert.equal(
+    await markReplacementSubmitted(
+      replacement.id,
+      "0x2222222222222222222222222222222222222222222222222222222222222222",
+    ),
+    null,
+  );
+});
