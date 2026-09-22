@@ -5,6 +5,7 @@ import { observeTransaction } from "./confirmation";
 import { TransactionEngineError } from "./errors";
 import { failExecution } from "./failure";
 import { recoverSubmission } from "./submission-recovery";
+import { scheduleExecutionRetry } from "./retry-state";
 import {
   findRecoverableTransaction,
   markTransactionSubmitted,
@@ -32,7 +33,7 @@ export async function executeTransaction(
 
     if (recovery.kind === "await") {
       const outcome = await observeTransaction(adapter, recovery.hash);
-      await persistOutcome(existing.id, outcome);
+      await persistOutcome(existing.id, existing.executionAttemptId, outcome);
       return { transactionId: existing.id, hash: recovery.hash, recovered: true };
     }
 
@@ -59,7 +60,7 @@ export async function executeTransaction(
     }
 
     const outcome = await observeTransaction(adapter, submitted.hash);
-    await persistOutcome(existing.id, outcome);
+    await persistOutcome(existing.id, existing.executionAttemptId, outcome);
     return { transactionId: existing.id, hash: submitted.hash, recovered: true };
   }
 
@@ -103,7 +104,7 @@ export async function executeTransaction(
   }
 
   const outcome = await observeTransaction(adapter, submitted.hash);
-  await persistOutcome(transaction.id, outcome);
+  await persistOutcome(transaction.id, input.executionAttemptId, outcome);
 
   return {
     transactionId: transaction.id,
@@ -114,6 +115,7 @@ export async function executeTransaction(
 
 async function persistOutcome(
   transactionId: string,
+  executionAttemptId: string,
   outcome: Awaited<ReturnType<typeof observeTransaction>>,
 ) {
   if (outcome.kind === "confirmed") {
@@ -131,11 +133,21 @@ async function persistOutcome(
 
   if (outcome.kind === "dropped") {
     const message = "Submitted transaction could not be found";
-    await failExecution(
-      transactionId,
-      { code: "CONFIRMATION_FAILED", message },
-      "DROPPED",
-    );
+    const retry = await scheduleExecutionRetry(executionAttemptId);
+    if (!retry) {
+      throw new TransactionEngineError(
+        "CONFIRMATION_FAILED",
+        "Dropped transaction could not schedule a retry",
+        true,
+      );
+    }
+    if (retry.kind === "exhausted") {
+      throw new TransactionEngineError(
+        "RETRY_EXHAUSTED",
+        "Transaction retry limit exhausted",
+        false,
+      );
+    }
     throw new TransactionEngineError("CONFIRMATION_FAILED", message, true);
   }
 
