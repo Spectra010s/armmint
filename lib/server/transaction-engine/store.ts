@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { executionAttempts, mintJobs, transactions } from "@/lib/db/schema";
@@ -26,6 +26,7 @@ export async function findRecoverableTransaction(mintJobId: string) {
         inArray(transactions.state, ["CREATED", "SUBMITTED", "CONFIRMING"]),
       ),
     )
+    .orderBy(desc(transactions.createdAt))
     .limit(1);
 
   return row ?? null;
