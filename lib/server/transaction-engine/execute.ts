@@ -31,7 +31,7 @@ export async function executeTransaction(
     const recovery = recoverSubmission(existing);
 
     if (recovery.kind === "await") {
-      const outcome = await observeTransaction(adapter, recovery.hash);
+      const outcome = await observeSafely(adapter, recovery.hash);
       await persistOutcome(existing.id, existing.executionAttemptId, outcome);
       return { transactionId: existing.id, hash: recovery.hash, recovered: true };
     }
@@ -58,7 +58,7 @@ export async function executeTransaction(
       );
     }
 
-    const outcome = await observeTransaction(adapter, submitted.hash);
+    const outcome = await observeSafely(adapter, submitted.hash);
     await persistOutcome(existing.id, existing.executionAttemptId, outcome);
     return { transactionId: existing.id, hash: submitted.hash, recovered: true };
   }
@@ -102,7 +102,7 @@ export async function executeTransaction(
     );
   }
 
-  const outcome = await observeTransaction(adapter, submitted.hash);
+  const outcome = await observeSafely(adapter, submitted.hash);
   await persistOutcome(transaction.id, input.executionAttemptId, outcome);
 
   return {
@@ -150,6 +150,21 @@ function assertSubmittedNonce(expected: number, actual: number) {
       "NONCE_CONFLICT",
       `Transaction submission returned nonce ${actual}; expected ${expected}`,
       false,
+    );
+  }
+}
+
+async function observeSafely(
+  adapter: TransactionChainAdapter,
+  hash: `0x${string}`,
+) {
+  try {
+    return await observeTransaction(adapter, hash);
+  } catch {
+    throw new TransactionEngineError(
+      "CONFIRMATION_FAILED",
+      "Transaction confirmation lookup failed",
+      true,
     );
   }
 }
