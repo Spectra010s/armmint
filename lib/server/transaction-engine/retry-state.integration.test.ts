@@ -45,6 +45,7 @@ after(async () => {
 
 test("retry state is persisted for both attempt and job", async () => {
   assert.deepEqual(await scheduleExecutionRetry("attempt-1"), {
+    kind: "scheduled",
     attemptId: "attempt-1",
     jobId: "job-1",
   });
@@ -53,4 +54,33 @@ test("retry state is persisted for both attempt and job", async () => {
   const [job] = await db.select().from(mintJobs).where(eq(mintJobs.id, "job-1"));
   assert.equal(attempt?.state, "RETRYING");
   assert.equal(job?.state, "RETRYING");
+});
+
+test("retry exhaustion fails both attempt and job", async () => {
+  await db
+    .update(executionAttempts)
+    .set({ attemptNumber: 3 })
+    .where(eq(executionAttempts.id, "attempt-1"));
+
+  assert.deepEqual(
+    await scheduleExecutionRetry("attempt-1", {
+      maxAttempts: 3,
+      gasBumpBps: 1_250,
+    }),
+    { kind: "exhausted", attemptId: "attempt-1", jobId: "job-1" },
+  );
+
+  const [attempt] = await db
+    .select()
+    .from(executionAttempts)
+    .where(eq(executionAttempts.id, "attempt-1"));
+  const [job] = await db
+    .select()
+    .from(mintJobs)
+    .where(eq(mintJobs.id, "job-1"));
+
+  assert.equal(attempt?.state, "FAILED");
+  assert.equal(attempt?.failureCode, "RETRY_EXHAUSTED");
+  assert.equal(attempt?.failureMessage, "Transaction retry limit exhausted");
+  assert.equal(job?.state, "FAILED");
 });
