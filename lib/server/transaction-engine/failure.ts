@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { executionAttempts, mintJobs, transactions } from "@/lib/db/schema";
@@ -27,10 +27,18 @@ export async function failExecution(
 
     if (!row) return null;
 
-    await tx
+    const [failedTransaction] = await tx
       .update(transactions)
       .set({ state: transactionState, updatedAt: now })
-      .where(eq(transactions.id, transactionId));
+      .where(
+        and(
+          eq(transactions.id, transactionId),
+          inArray(transactions.state, ["CREATED", "SUBMITTED", "CONFIRMING"]),
+        ),
+      )
+      .returning({ id: transactions.id });
+
+    if (!failedTransaction) return null;
 
     await tx
       .update(executionAttempts)
