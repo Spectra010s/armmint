@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { executionAttempts, mintJobs } from "@/lib/db/schema";
 import { DEFAULT_RETRY_POLICY, shouldRetry, type RetryPolicy } from "./retry";
@@ -26,6 +26,11 @@ export async function scheduleExecutionRetry(
 
     if (!current) return null;
 
+    const activeAttempt = and(
+      eq(executionAttempts.id, attemptId),
+      inArray(executionAttempts.state, ["RUNNING", "RETRYING"]),
+    );
+
     if (!shouldRetry(current.attemptNumber, policy)) {
       await tx
         .update(executionAttempts)
@@ -35,7 +40,7 @@ export async function scheduleExecutionRetry(
           failureMessage: "Transaction retry limit exhausted",
           updatedAt: now,
         })
-        .where(eq(executionAttempts.id, attemptId));
+        .where(activeAttempt);
 
       await tx
         .update(mintJobs)
@@ -45,10 +50,13 @@ export async function scheduleExecutionRetry(
       return { kind: "exhausted", attemptId, jobId: current.mintJobId };
     }
 
-    await tx
+    const [scheduledAttempt] = await tx
       .update(executionAttempts)
       .set({ state: "RETRYING", updatedAt: now })
-      .where(eq(executionAttempts.id, attemptId));
+      .where(activeAttempt)
+      .returning({ id: executionAttempts.id });
+
+    if (!scheduledAttempt) return null;
 
     await tx
       .update(mintJobs)
