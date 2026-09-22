@@ -99,3 +99,82 @@ export async function markTransactionTerminal(
 
   return transaction ?? null;
 }
+
+export async function reserveReplacementTransaction(
+  replacedTransactionId: string,
+  executionAttemptId: string,
+  chainId: number,
+  nonce: number,
+  now = new Date(),
+) {
+  return db.transaction(async (tx) => {
+    const [original] = await tx
+      .select({ nonce: transactions.nonce })
+      .from(transactions)
+      .where(eq(transactions.id, replacedTransactionId))
+      .limit(1);
+
+    if (!original) throw new Error("Transaction to replace was not found");
+    if (original.nonce !== nonce) {
+      throw new Error("Replacement transaction must reuse the original nonce");
+    }
+
+    const [replacement] = await tx
+      .insert(transactions)
+      .values({
+        id: randomUUID(),
+        executionAttemptId,
+        replacesTransactionId: replacedTransactionId,
+        chainId,
+        nonce,
+        state: "CREATED",
+        updatedAt: now,
+      })
+      .returning();
+
+    return replacement;
+  });
+}
+
+export async function markReplacementSubmitted(
+  replacementTransactionId: string,
+  hash: string,
+  now = new Date(),
+) {
+  return db.transaction(async (tx) => {
+    const [replacement] = await tx
+      .update(transactions)
+      .set({ hash, state: "SUBMITTED", updatedAt: now })
+      .where(eq(transactions.id, replacementTransactionId))
+      .returning();
+
+    if (!replacement) return null;
+
+    if (replacement.replacesTransactionId) {
+      await tx
+        .update(transactions)
+        .set({ state: "REPLACED", updatedAt: now })
+        .where(
+          and(
+            eq(transactions.id, replacement.replacesTransactionId),
+            inArray(transactions.state, ["SUBMITTED", "CONFIRMING", "DROPPED"]),
+          ),
+        );
+    }
+
+    const [attempt] = await tx
+      .select({ mintJobId: executionAttempts.mintJobId })
+      .from(executionAttempts)
+      .where(eq(executionAttempts.id, replacement.executionAttemptId))
+      .limit(1);
+
+    if (!attempt) throw new Error("Execution attempt not found for replacement");
+
+    await tx
+      .update(mintJobs)
+      .set({ state: "SUBMITTED", updatedAt: now })
+      .where(eq(mintJobs.id, attempt.mintJobId));
+
+    return replacement;
+  });
+}
