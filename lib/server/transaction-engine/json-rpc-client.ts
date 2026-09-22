@@ -73,5 +73,13 @@ function toRpcRequest(request: TransactionRequest) {
     ...(request.value === undefined
       ? {}
       : { value: `0x${request.value.toString(16)}` }),
+    ...(request.maxFeePerGas === undefined
+      ? {}
+      : { maxFeePerGas: `0x${request.maxFeePerGas.toString(16)}` }),
+    ...(request.maxPriorityFeePerGas === undefined
+      ? {}
+      : {
+          maxPriorityFeePerGas: `0x${request.maxPriorityFeePerGas.toString(16)}`,
+        }),
   };
 }
