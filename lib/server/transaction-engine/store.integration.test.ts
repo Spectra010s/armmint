@@ -21,6 +21,8 @@ const {
   findRecoverableTransaction,
   markTransactionSubmitted,
   markTransactionTerminal,
+  markReplacementSubmitted,
+  reserveReplacementTransaction,
   reserveTransaction,
 } = await import("./store.ts");
 
@@ -117,4 +119,47 @@ test("terminal transactions are not returned as recoverable", async () => {
     .from(transactions)
     .where(eq(transactions.id, reserved.id));
   assert.equal(persisted?.state, "CONFIRMED");
+});
+
+test("replacement keeps the original nonce and marks the old transaction replaced", async () => {
+  const original = await reserveTransaction("attempt-1", 84532, 9);
+  const originalHash =
+    "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+  await markTransactionSubmitted(original.id, originalHash);
+
+  const replacement = await reserveReplacementTransaction(
+    original.id,
+    "attempt-1",
+    84532,
+    9,
+  );
+  const replacementHash =
+    "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+  await markReplacementSubmitted(replacement.id, replacementHash);
+
+  const rows = await db.select().from(transactions);
+  const persistedOriginal = rows.find((row) => row.id === original.id);
+  const persistedReplacement = rows.find((row) => row.id === replacement.id);
+
+  assert.equal(persistedOriginal?.state, "REPLACED");
+  assert.equal(persistedReplacement?.state, "SUBMITTED");
+  assert.equal(persistedReplacement?.nonce, original.nonce);
+  assert.equal(persistedReplacement?.replacesTransactionId, original.id);
+
+  const recovered = await findRecoverableTransaction("job-1");
+  assert.equal(recovered?.id, replacement.id);
+  assert.equal(recovered?.hash, replacementHash);
+});
+
+test("replacement refuses a different nonce", async () => {
+  const original = await reserveTransaction("attempt-1", 84532, 9);
+
+  await assert.rejects(
+    reserveReplacementTransaction(original.id, "attempt-1", 84532, 10),
+    /must reuse the original nonce/,
+  );
+
+  const rows = await db.select().from(transactions);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.id, original.id);
 });
