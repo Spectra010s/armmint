@@ -57,7 +57,7 @@ export function createJsonRpcEvmClient(
         "eth_getTransactionReceipt",
         [hash],
       );
-      if (!receipt) throw new Error("Transaction receipt not found");
+      if (!receipt) return { state: "PENDING" as const, hash };
       return receipt.status === "0x1"
         ? { state: "CONFIRMED" as const, hash: receipt.transactionHash }
         : { state: "REVERTED" as const, hash: receipt.transactionHash };
