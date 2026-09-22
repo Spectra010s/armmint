@@ -3,6 +3,7 @@ import "server-only";
 import { beginConfirmation, completeConfirmedExecution } from "./completion";
 import { TransactionEngineError } from "./errors";
 import { failExecution } from "./failure";
+import { recoverSubmission } from "./submission-recovery";
 import {
   findRecoverableTransaction,
   markTransactionSubmitted,
@@ -27,18 +28,38 @@ export async function executeTransaction(
 ) {
   const existing = await findRecoverableTransaction(input.mintJobId);
 
-  if (existing?.hash) {
-    const receipt = await adapter.waitForReceipt(existing.hash as `0x${string}`);
-    await persistReceipt(existing.id, receipt);
-    return { transactionId: existing.id, hash: existing.hash, recovered: true };
-  }
+  if (existing) {
+    const recovery = recoverSubmission(existing);
 
-  if (existing && !existing.hash) {
-    throw new TransactionEngineError(
-      "SUBMISSION_FAILED",
-      "A reserved transaction exists without a persisted hash",
-      true,
-    );
+    if (recovery.kind === "await") {
+      const receipt = await adapter.waitForReceipt(recovery.hash);
+      await persistReceipt(existing.id, receipt);
+      return { transactionId: existing.id, hash: recovery.hash, recovered: true };
+    }
+
+    let submitted;
+    try {
+      submitted = await adapter.submit({ ...input.request, nonce: recovery.nonce });
+    } catch {
+      throw new TransactionEngineError(
+        "SUBMISSION_FAILED",
+        "Transaction resubmission failed",
+        true,
+      );
+    }
+
+    const persisted = await markTransactionSubmitted(existing.id, submitted.hash);
+    if (!persisted) {
+      throw new TransactionEngineError(
+        "SUBMISSION_FAILED",
+        "Recovered transaction could not be persisted",
+        true,
+      );
+    }
+
+    const receipt = await adapter.waitForReceipt(submitted.hash);
+    await persistReceipt(existing.id, receipt);
+    return { transactionId: existing.id, hash: submitted.hash, recovered: true };
   }
 
   try {
