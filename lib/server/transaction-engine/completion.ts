@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { executionAttempts, mintJobs, transactions } from "@/lib/db/schema";
@@ -41,15 +41,40 @@ export async function completeConfirmedExecution(
       if (!confirmed) return null;
     }
 
-    await tx
+    const [attempt] = await tx
       .update(executionAttempts)
       .set({ state: "SUCCEEDED", updatedAt: now })
-      .where(eq(executionAttempts.id, row.attemptId));
+      .where(
+        and(
+          eq(executionAttempts.id, row.attemptId),
+          inArray(executionAttempts.state, ["RUNNING", "RETRYING", "SUCCEEDED"]),
+        ),
+      )
+      .returning({ id: executionAttempts.id });
 
-    await tx
+    if (!attempt) return null;
+
+    const [job] = await tx
       .update(mintJobs)
       .set({ state: "SUCCEEDED", updatedAt: now })
-      .where(eq(mintJobs.id, row.jobId));
+      .where(
+        and(
+          eq(mintJobs.id, row.jobId),
+          inArray(mintJobs.state, [
+            "CLAIMED",
+            "SIMULATING",
+            "SIGNING",
+            "SUBMITTING",
+            "SUBMITTED",
+            "RETRYING",
+            "CONFIRMING",
+            "SUCCEEDED",
+          ]),
+        ),
+      )
+      .returning({ id: mintJobs.id });
+
+    if (!job) return null;
 
     return { transactionId, attemptId: row.attemptId, jobId: row.jobId };
   });
