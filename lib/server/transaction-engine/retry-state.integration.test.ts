@@ -84,3 +84,28 @@ test("retry exhaustion fails both attempt and job", async () => {
   assert.equal(attempt?.failureMessage, "Transaction retry limit exhausted");
   assert.equal(job?.state, "FAILED");
 });
+
+test("retry scheduling cannot reopen a succeeded attempt", async () => {
+  await db
+    .update(executionAttempts)
+    .set({ state: "SUCCEEDED" })
+    .where(eq(executionAttempts.id, "attempt-1"));
+  await db
+    .update(mintJobs)
+    .set({ state: "SUCCEEDED" })
+    .where(eq(mintJobs.id, "job-1"));
+
+  assert.equal(await scheduleExecutionRetry("attempt-1"), null);
+
+  const [attempt] = await db
+    .select()
+    .from(executionAttempts)
+    .where(eq(executionAttempts.id, "attempt-1"));
+  const [job] = await db
+    .select()
+    .from(mintJobs)
+    .where(eq(mintJobs.id, "job-1"));
+
+  assert.equal(attempt?.state, "SUCCEEDED");
+  assert.equal(job?.state, "SUCCEEDED");
+});
