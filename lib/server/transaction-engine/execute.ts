@@ -2,6 +2,7 @@ import "server-only";
 
 import { beginConfirmation, completeConfirmedExecution } from "./completion";
 import { TransactionEngineError } from "./errors";
+import { failExecution } from "./failure";
 import {
   findRecoverableTransaction,
   markTransactionSubmitted,
@@ -104,10 +105,11 @@ async function persistReceipt(
     return;
   }
 
-  await markTransactionTerminal(transactionId, "REVERTED");
-  throw new TransactionEngineError(
+  const message = receipt.reason ?? "Transaction reverted";
+  await failExecution(
+    transactionId,
+    { code: "REVERTED", message },
     "REVERTED",
-    receipt.reason ?? "Transaction reverted",
-    false,
   );
+  throw new TransactionEngineError("REVERTED", message, false);
 }
