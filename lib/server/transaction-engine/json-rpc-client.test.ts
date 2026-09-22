@@ -87,3 +87,43 @@ test("JSON-RPC client rejects a signing boundary that changes the reserved nonce
     /changed the reserved transaction nonce/,
   );
 });
+
+test("JSON-RPC simulation serializes EIP-1559 fee fields", async () => {
+  let params: readonly unknown[] = [];
+  const client = createJsonRpcEvmClient({
+    async request<T>(_method: string, nextParams: readonly unknown[]) {
+      params = nextParams;
+      return "0x" as T;
+    },
+  });
+
+  await client.simulate({
+    chainId: 84532,
+    from: "0x1111111111111111111111111111111111111111",
+    to: "0x2222222222222222222222222222222222222222",
+    data: "0x",
+    maxFeePerGas: 100n,
+    maxPriorityFeePerGas: 10n,
+  });
+
+  assert.deepEqual(params[0], {
+    from: "0x1111111111111111111111111111111111111111",
+    to: "0x2222222222222222222222222222222222222222",
+    data: "0x",
+    maxFeePerGas: "0x64",
+    maxPriorityFeePerGas: "0xa",
+  });
+});
+
+test("missing receipt remains pending", async () => {
+  const client = createJsonRpcEvmClient({
+    async request<T>() {
+      return null as T;
+    },
+  });
+
+  assert.deepEqual(await client.receipt("0xabc"), {
+    state: "PENDING",
+    hash: "0xabc",
+  });
+});
