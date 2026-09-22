@@ -7,7 +7,7 @@ import type { TransactionChainAdapter } from "./types.ts";
 const hash =
   "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
 
-test("maps confirmed and reverted receipts", async () => {
+test("maps confirmed, reverted and pending receipts", async () => {
   const confirmed = {
     waitForReceipt: async () => ({ state: "CONFIRMED" as const, hash }),
   } as TransactionChainAdapter;
@@ -28,17 +28,22 @@ test("maps confirmed and reverted receipts", async () => {
     hash,
     reason: "execution reverted",
   });
+
+  const pending = {
+    waitForReceipt: async () => ({ state: "PENDING" as const, hash }),
+  } as TransactionChainAdapter;
+  assert.deepEqual(await observeTransaction(pending, hash), {
+    kind: "pending",
+    hash,
+  });
 });
 
-test("maps receipt lookup failure to dropped observation", async () => {
+test("propagates receipt lookup failures instead of guessing transaction state", async () => {
   const adapter = {
     waitForReceipt: async () => {
-      throw new Error("not found");
+      throw new Error("rpc unavailable");
     },
   } as unknown as TransactionChainAdapter;
 
-  assert.deepEqual(await observeTransaction(adapter, hash), {
-    kind: "dropped",
-    hash,
-  });
+  await assert.rejects(observeTransaction(adapter, hash), /rpc unavailable/);
 });
