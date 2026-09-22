@@ -42,3 +42,48 @@ test("JSON-RPC client classifies successful and reverted receipts", async () => 
   assert.equal((await makeClient("0x1").receipt("0xabc")).state, "CONFIRMED");
   assert.equal((await makeClient("0x0").receipt("0xabc")).state, "REVERTED");
 });
+
+test("JSON-RPC client submits only raw transactions from the signing boundary", async () => {
+  const calls: Array<[string, readonly unknown[]]> = [];
+  const transport: JsonRpcTransport = {
+    async request<T>(method: string, params: readonly unknown[]) {
+      calls.push([method, params]);
+      return "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as T;
+    },
+  };
+  const client = createJsonRpcEvmClient(transport, {
+    async broadcast(request) {
+      return { rawTransaction: "0xdeadbeef", nonce: request.nonce };
+    },
+  });
+
+  const submitted = await client.broadcast({
+    chainId: 84532,
+    from: "0x1111111111111111111111111111111111111111",
+    to: "0x2222222222222222222222222222222222222222",
+    data: "0x",
+    nonce: 12,
+  });
+
+  assert.equal(calls[0]?.[0], "eth_sendRawTransaction");
+  assert.deepEqual(calls[0]?.[1], ["0xdeadbeef"]);
+  assert.equal(submitted.nonce, 12);
+});
+
+test("JSON-RPC client rejects a signing boundary that changes the reserved nonce", async () => {
+  const client = createJsonRpcEvmClient(
+    { async request<T>() { return "0xhash" as T; } },
+    { async broadcast() { return { rawTransaction: "0xdeadbeef", nonce: 13 }; } },
+  );
+
+  await assert.rejects(
+    client.broadcast({
+      chainId: 84532,
+      from: "0x1111111111111111111111111111111111111111",
+      to: "0x2222222222222222222222222222222222222222",
+      data: "0x",
+      nonce: 12,
+    }),
+    /changed the reserved transaction nonce/,
+  );
+});
