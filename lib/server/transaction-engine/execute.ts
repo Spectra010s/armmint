@@ -5,7 +5,6 @@ import { observeTransaction } from "./confirmation";
 import { TransactionEngineError } from "./errors";
 import { failExecution } from "./failure";
 import { recoverSubmission } from "./submission-recovery";
-import { scheduleExecutionRetry } from "./retry-state";
 import {
   findRecoverableTransaction,
   markTransactionSubmitted,
@@ -131,24 +130,9 @@ async function persistOutcome(
     return;
   }
 
-  if (outcome.kind === "dropped") {
-    const message = "Submitted transaction could not be found";
-    const retry = await scheduleExecutionRetry(executionAttemptId);
-    if (!retry) {
-      throw new TransactionEngineError(
-        "CONFIRMATION_FAILED",
-        "Dropped transaction could not schedule a retry",
-        true,
-      );
-    }
-    if (retry.kind === "exhausted") {
-      throw new TransactionEngineError(
-        "RETRY_EXHAUSTED",
-        "Transaction retry limit exhausted",
-        false,
-      );
-    }
-    throw new TransactionEngineError("CONFIRMATION_FAILED", message, true);
+  if (outcome.kind === "pending") {
+    await beginConfirmation(transactionId);
+    return;
   }
 
   const message = outcome.reason ?? "Transaction reverted";
