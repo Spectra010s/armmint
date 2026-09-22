@@ -32,7 +32,7 @@ export async function scheduleExecutionRetry(
     );
 
     if (!shouldRetry(current.attemptNumber, policy)) {
-      await tx
+      const [failedAttempt] = await tx
         .update(executionAttempts)
         .set({
           state: "FAILED",
@@ -40,7 +40,10 @@ export async function scheduleExecutionRetry(
           failureMessage: "Transaction retry limit exhausted",
           updatedAt: now,
         })
-        .where(activeAttempt);
+        .where(activeAttempt)
+        .returning({ id: executionAttempts.id });
+
+      if (!failedAttempt) return null;
 
       await tx
         .update(mintJobs)
