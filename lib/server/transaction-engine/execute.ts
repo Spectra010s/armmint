@@ -8,7 +8,6 @@ import { recoverSubmission } from "./submission-recovery";
 import {
   findRecoverableTransaction,
   markTransactionSubmitted,
-  markTransactionTerminal,
   reserveTransaction,
 } from "./store";
 import type {
@@ -47,6 +46,8 @@ export async function executeTransaction(
         true,
       );
     }
+
+    assertSubmittedNonce(recovery.nonce, submitted.nonce);
 
     const persisted = await markTransactionSubmitted(existing.id, submitted.hash);
     if (!persisted) {
@@ -89,6 +90,8 @@ export async function executeTransaction(
       true,
     );
   }
+
+  assertSubmittedNonce(nonce, submitted.nonce);
 
   const persisted = await markTransactionSubmitted(transaction.id, submitted.hash);
   if (!persisted) {
@@ -143,4 +146,14 @@ async function persistOutcome(
     "REVERTED",
   );
   throw new TransactionEngineError("REVERTED", message, false);
+}
+
+function assertSubmittedNonce(expected: number, actual: number) {
+  if (expected !== actual) {
+    throw new TransactionEngineError(
+      "NONCE_CONFLICT",
+      `Transaction submission returned nonce ${actual}; expected ${expected}`,
+      false,
+    );
+  }
 }
