@@ -102,3 +102,31 @@ test("confirmation completes transaction, attempt, and job exactly once", async 
   assert.equal(attempt?.state, "SUCCEEDED");
   assert.equal(job?.state, "SUCCEEDED");
 });
+
+test("late confirmation cannot overwrite a failed execution", async () => {
+  await beginConfirmation("tx-1");
+
+  await db
+    .update(executionAttempts)
+    .set({ state: "FAILED", failureCode: "RETRY_EXHAUSTED" })
+    .where(eq(executionAttempts.id, "attempt-1"));
+  await db
+    .update(mintJobs)
+    .set({ state: "FAILED" })
+    .where(eq(mintJobs.id, "job-1"));
+
+  assert.equal(await completeConfirmedExecution("tx-1"), null);
+
+  const [attempt] = await db
+    .select()
+    .from(executionAttempts)
+    .where(eq(executionAttempts.id, "attempt-1"));
+  const [job] = await db
+    .select()
+    .from(mintJobs)
+    .where(eq(mintJobs.id, "job-1"));
+
+  assert.equal(attempt?.state, "FAILED");
+  assert.equal(attempt?.failureCode, "RETRY_EXHAUSTED");
+  assert.equal(job?.state, "FAILED");
+});
