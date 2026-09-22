@@ -1,5 +1,6 @@
 import "server-only";
 
+import { beginConfirmation, completeConfirmedExecution } from "./completion";
 import { TransactionEngineError } from "./errors";
 import {
   findRecoverableTransaction,
@@ -91,7 +92,15 @@ async function persistReceipt(
   receipt: TransactionReceiptResult,
 ) {
   if (receipt.state === "CONFIRMED") {
-    await markTransactionTerminal(transactionId, "CONFIRMED");
+    await beginConfirmation(transactionId);
+    const completed = await completeConfirmedExecution(transactionId);
+    if (!completed) {
+      throw new TransactionEngineError(
+        "CONFIRMATION_FAILED",
+        "Confirmed transaction could not complete its execution state",
+        true,
+      );
+    }
     return;
   }
 
