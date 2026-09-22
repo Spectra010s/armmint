@@ -95,3 +95,33 @@ test("revert persists an auditable terminal failure across all execution records
   assert.equal(attempt?.failureMessage, "Execution reverted");
   assert.equal(job?.state, "FAILED");
 });
+
+test("failure cannot overwrite an already confirmed transaction", async () => {
+  const transaction = await seedExecution("CONFIRMED");
+
+  assert.equal(
+    await failExecution(
+      transaction.id,
+      { code: "REVERTED", message: "late receipt" },
+      "REVERTED",
+    ),
+    null,
+  );
+
+  const [persistedTransaction] = await db
+    .select()
+    .from(transactions)
+    .where(eq(transactions.id, transaction.id));
+  const [attempt] = await db
+    .select()
+    .from(executionAttempts)
+    .where(eq(executionAttempts.id, "attempt-1"));
+  const [job] = await db
+    .select()
+    .from(mintJobs)
+    .where(eq(mintJobs.id, "job-1"));
+
+  assert.equal(persistedTransaction?.state, "CONFIRMED");
+  assert.notEqual(attempt?.state, "FAILED");
+  assert.notEqual(job?.state, "FAILED");
+});
