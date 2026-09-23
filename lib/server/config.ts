@@ -66,9 +66,13 @@ export function getServerConfig(): ServerConfig {
   const required = Object.fromEntries(
     REQUIRED_ENV.map((name) => [name, requireNonEmpty(name)]),
   ) as { [K in (typeof REQUIRED_ENV)[number]]: string };
+  const rawChainId = process.env.BASE_CHAIN_ID?.trim();
+  if (!rawChainId) {
+    throw new Error("Missing required server environment variable: BASE_CHAIN_ID");
+  }
   const config: ServerConfig = {
     ...required,
-    BASE_CHAIN_ID: Number(process.env.BASE_CHAIN_ID ?? "8453"),
+    BASE_CHAIN_ID: Number(rawChainId),
   };
 
   if (![8453, 84532].includes(config.BASE_CHAIN_ID))
