@@ -31,7 +31,24 @@ function validateUrl(
   name: "DATABASE_URL" | "BETTER_AUTH_URL" | "BASE_RPC_URL",
   value: string,
 ): void {
-  if (!URL.canParse(value)) {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`Invalid URL in server environment variable: ${name}`);
+  }
+  if (name === "DATABASE_URL") return;
+  const isProduction = process.env.NODE_ENV === "production";
+  const isLocalhost =
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "::1";
+  if (parsed.protocol !== "https:" && (isProduction || !isLocalhost)) {
+    throw new Error(
+      `Invalid URL in server environment variable: ${name} must use https in production`,
+    );
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new Error(`Invalid URL in server environment variable: ${name}`);
   }
 }
@@ -82,6 +99,11 @@ export function getServerConfig(): ServerConfig {
   validateUrl("BASE_RPC_URL", config.BASE_RPC_URL);
   validateTelegramBotUsername(config.TELEGRAM_BOT_USERNAME);
   decodeEncryptionKey(config.ARMINT_ENCRYPTION_KEY);
+  if (config.BETTER_AUTH_SECRET.length < 32) {
+    throw new Error(
+      "BETTER_AUTH_SECRET must be at least 32 characters",
+    );
+  }
 
   return config;
 }
