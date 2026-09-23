@@ -97,11 +97,11 @@ test("revert persists an auditable terminal failure across all execution records
 });
 
 test("failure cannot overwrite an already confirmed transaction", async () => {
-  const transaction = await seedExecution("CONFIRMED");
+  await db.update(transactions).set({ state: "CONFIRMED" }).where(eq(transactions.id, "tx-1"));
 
   assert.equal(
     await failExecution(
-      transaction.id,
+      "tx-1",
       { code: "REVERTED", message: "late receipt" },
       "REVERTED",
     ),
@@ -111,7 +111,7 @@ test("failure cannot overwrite an already confirmed transaction", async () => {
   const [persistedTransaction] = await db
     .select()
     .from(transactions)
-    .where(eq(transactions.id, transaction.id));
+    .where(eq(transactions.id, "tx-1"));
   const [attempt] = await db
     .select()
     .from(executionAttempts)
@@ -124,4 +124,24 @@ test("failure cannot overwrite an already confirmed transaction", async () => {
   assert.equal(persistedTransaction?.state, "CONFIRMED");
   assert.notEqual(attempt?.state, "FAILED");
   assert.notEqual(job?.state, "FAILED");
+});
+
+test("late failure cannot overwrite a succeeded attempt and job", async () => {
+  await db.update(executionAttempts).set({ state: "SUCCEEDED" }).where(eq(executionAttempts.id, "attempt-1"));
+  await db.update(mintJobs).set({ state: "SUCCEEDED" }).where(eq(mintJobs.id, "job-1"));
+
+  assert.equal(
+    await failExecution(
+      "tx-1",
+      { code: "REVERTED", message: "late receipt" },
+      "REVERTED",
+    ),
+    null,
+  );
+
+  const [attempt] = await db.select().from(executionAttempts).where(eq(executionAttempts.id, "attempt-1"));
+  const [job] = await db.select().from(mintJobs).where(eq(mintJobs.id, "job-1"));
+
+  assert.equal(attempt?.state, "SUCCEEDED");
+  assert.equal(job?.state, "SUCCEEDED");
 });
