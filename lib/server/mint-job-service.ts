@@ -102,7 +102,9 @@ export async function createMintJob(
         scheduledFor,
         idempotencyKey,
       })
-      .onConflictDoNothing({ target: mintJobs.idempotencyKey })
+      .onConflictDoNothing({
+        target: [mintJobs.userId, mintJobs.idempotencyKey],
+      })
       .returning();
     if (created) return created;
     const [retry] = await tx
