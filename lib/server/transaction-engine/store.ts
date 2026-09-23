@@ -23,6 +23,12 @@ import { ACTIVE_JOB_STATES, lockExecution } from "./guards";
 import { TransactionEngineError } from "./errors";
 import type { PreparedTransaction } from "./types";
 
+export const ENGINE_LEASE_MS = 60_000;
+// Proof-based stall bound: Ethereum nonces are sequential, so latest > reserved
+// proves the reserved nonce was already mined by a different transaction.
+// The grace period absorbs receipt lag before declaring our hash unmineable.
+export const NONCE_CONSUMED_GRACE_MS = 5 * 60_000;
+
 export async function findJobTransactions(jobId: string) {
   return db
     .select({ transaction: transactions })
@@ -127,6 +133,7 @@ export async function reserveTransaction(
         eq(transactions.executionAttemptId, executionAttempts.id),
       )
       .where(eq(executionAttempts.mintJobId, context.job.id))
+      .orderBy(desc(transactions.createdAt), desc(transactions.id))
       .limit(1);
     if (existing[0]) return existing[0].transaction;
     const reserved = await tx
@@ -321,6 +328,14 @@ export async function reserveReplacementTransaction(
         "NONCE_CONFLICT",
         "Replacement transaction must reuse the original nonce",
       );
+    // Only a signed (broadcast or checkpointed) transaction may be replaced.
+    // Forking an unsigned reservation would create two signable rows sharing
+    // one nonce; only checkpoint/submit guards would stop a double broadcast.
+    if (!original.hash)
+      throw new TransactionEngineError(
+        "INVALID_EXECUTION",
+        "Only a signed transaction can be replaced",
+      );
     if (
       original.executionAttemptId !== attemptId ||
       original.chainId !== chainId ||
@@ -364,6 +379,7 @@ export async function acquireExecutionLease(
   jobId: string,
   attemptId: string,
   now = new Date(),
+  leaseMs = ENGINE_LEASE_MS,
 ) {
   return db.transaction(async (tx) => {
     const context = await lockExecution(tx, attemptId);
@@ -373,7 +389,12 @@ export async function acquireExecutionLease(
       .update(mintJobs)
       .set({
         engineLeaseId: id,
-        engineLeaseExpiresAt: new Date(now.getTime() + 60_000),
+        engineLeaseExpiresAt: new Date(now.getTime() + leaseMs),
+        // Hold the claim while the engine owns the job so a second worker
+        // cannot satisfy the claim query's both-leases-expired condition
+        // mid-execution. The heartbeat below keeps both fresh.
+        claimExpiresAt: new Date(now.getTime() + leaseMs),
+        updatedAt: now,
       })
       .where(
         and(
@@ -387,6 +408,33 @@ export async function acquireExecutionLease(
       .returning();
     return job ? { id, context } : null;
   });
+}
+// Heartbeat: extend an owned, unexpired lease before long RPC waits so a
+// second worker cannot steal mid-waitForReceipt. Returns null when the lease
+// is no longer ours (caller must stop before any external side effect).
+export async function renewExecutionLease(
+  jobId: string,
+  leaseId: string,
+  now = new Date(),
+  leaseMs = ENGINE_LEASE_MS,
+) {
+  const [job] = await db
+    .update(mintJobs)
+    .set({
+      engineLeaseExpiresAt: new Date(now.getTime() + leaseMs),
+      claimExpiresAt: new Date(now.getTime() + leaseMs),
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(mintJobs.id, jobId),
+        eq(mintJobs.engineLeaseId, leaseId),
+        inArray(mintJobs.state, ACTIVE_JOB_STATES),
+        gt(mintJobs.engineLeaseExpiresAt, now),
+      ),
+    )
+    .returning({ id: mintJobs.id });
+  return job ?? null;
 }
 export async function releaseExecutionLease(jobId: string, leaseId: string) {
   await db

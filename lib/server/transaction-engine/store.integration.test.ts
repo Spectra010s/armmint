@@ -23,10 +23,13 @@ const db = drizzle(client);
 const databaseMock = mock.module("@/lib/db", { exports: { db } });
 
 const {
+  acquireExecutionLease,
   findRecoverableTransaction,
   markTransactionSubmitted,
   markTransactionTerminal,
   markReplacementSubmitted,
+  releaseExecutionLease,
+  renewExecutionLease,
   reserveReplacementTransaction,
   reserveTransaction,
 } = await import("./store.ts");
@@ -225,4 +228,77 @@ test("replacement submission is idempotent against late duplicate writes", async
     ),
     null,
   );
+});
+
+test("held execution lease cannot be stolen but can be renewed", async () => {
+  const before = new Date();
+  const first = await acquireExecutionLease("job-1", "attempt-1");
+  assert.ok(first);
+
+  // Acquiring also holds the claim so a second worker cannot reclaim mid-run.
+  const [held] = await db
+    .select({
+      claimExpiresAt: mintJobs.claimExpiresAt,
+      engineLeaseExpiresAt: mintJobs.engineLeaseExpiresAt,
+    })
+    .from(mintJobs)
+    .where(eq(mintJobs.id, "job-1"));
+  assert.ok(held.claimExpiresAt && held.claimExpiresAt > before);
+  assert.ok(held.engineLeaseExpiresAt && held.engineLeaseExpiresAt > before);
+
+  // Second acquisition while held fails.
+  assert.equal(await acquireExecutionLease("job-1", "attempt-1"), null);
+
+  // Heartbeat keeps the held lease alive.
+  assert.ok(await renewExecutionLease("job-1", first!.id));
+
+  // A foreign lease id cannot renew.
+  assert.equal(await renewExecutionLease("job-1", "not-the-holder"), null);
+
+  await releaseExecutionLease("job-1", first!.id);
+
+  // After release the job can be leased again.
+  assert.ok(await acquireExecutionLease("job-1", "attempt-1"));
+});
+
+test("replacement requires the original to be signed", async () => {
+  const original = await reserveTransaction("attempt-1", 84532, 9);
+  assert.equal(original.hash, null);
+
+  await assert.rejects(
+    reserveReplacementTransaction(original.id, "attempt-1", 84532, 9),
+    /Only a signed transaction can be replaced/,
+  );
+});
+
+test("replacement cannot reference a missing transaction", async () => {
+  await assert.rejects(
+    reserveReplacementTransaction(
+      "00000000-0000-4000-8000-000000000000",
+      "attempt-1",
+      84532,
+      9,
+    ),
+    /not found/,
+  );
+});
+
+test("orphan replacement links are rejected by the database", async () => {
+  const { randomUUID } = await import("node:crypto");
+  try {
+    await db.insert(transactions).values({
+      id: randomUUID(),
+      executionAttemptId: "attempt-1",
+      replacesTransactionId: "00000000-0000-4000-8000-000000000000",
+      chainId: 84532,
+      nonce: 9,
+    });
+    assert.fail("expected orphan replacement link to be rejected");
+  } catch (error) {
+    const cause =
+      error && typeof error === "object" && "cause" in error
+        ? String((error as { cause: unknown }).cause)
+        : String(error);
+    assert.match(cause, /foreign key constraint/i);
+  }
 });

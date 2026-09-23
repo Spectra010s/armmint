@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -303,7 +304,10 @@ export const transactions = pgTable(
     executionAttemptId: text("execution_attempt_id")
       .notNull()
       .references(() => executionAttempts.id, { onDelete: "restrict" }),
-    replacesTransactionId: text("replaces_transaction_id"),
+    replacesTransactionId: text("replaces_transaction_id").references(
+      (): AnyPgColumn => transactions.id,
+      { onDelete: "restrict" },
+    ),
     chainId: bigint("chain_id", { mode: "number" }).notNull(),
     hash: text("hash"),
     // Public, immutable signing inputs. Never store a key or signed payload here.
