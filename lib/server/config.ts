@@ -79,6 +79,16 @@ export function getWalletEncryptionKey(): Buffer {
   return decodeEncryptionKey(requireNonEmpty("ARMINT_ENCRYPTION_KEY"));
 }
 
+// Optional previous key for zero-downtime rotation: new rows encrypt with the
+// current key while old rows still decrypt via fallback until re-encrypted.
+// Rotation runbook: set PREVIOUS=current-old, CURRENT=new, run
+// scripts/rotate-wallet-keys.ts, then unset PREVIOUS.
+export function getPreviousWalletEncryptionKey(): Buffer | null {
+  const value = process.env.ARMINT_PREVIOUS_ENCRYPTION_KEY?.trim();
+  if (!value) return null;
+  return decodeEncryptionKey(value);
+}
+
 export function getServerConfig(): ServerConfig {
   const required = Object.fromEntries(
     REQUIRED_ENV.map((name) => [name, requireNonEmpty(name)]),
