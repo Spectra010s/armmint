@@ -7,13 +7,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --import ./tests/register.ts --experimental-test-module-mocks --test",
+    "test": "node --import ./tests/register.ts --experimental-test-module-mocks --test --test-concurrency=2",
     "lint": "oxlint",
     "pin": "pkgpin",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",
-    "postinstall": "next typegen"
+    "postinstall": "next typegen",
+    "typecheck": "next typegen && tsc --noEmit",
+    "worker": "node --env-file-if-exists=.env --import ./lib/server/register.ts scripts/worker.ts"
   },
   "dependencies": {
     "better-auth": "1.7.5",
@@ -21,7 +23,8 @@
     "next": "16.3.5",
     "pg": "8.23.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "viem": "2.56.8"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
@@ -37,5 +40,8 @@
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3"
   },
-  "packageManager": "pnpm@11.20.0"
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=24.19.0"
+  }
 }

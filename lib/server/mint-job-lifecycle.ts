@@ -1,9 +1,8 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
-import { db } from "@/lib/db";
 import {
   executionAttempts,
   mintJobs,
@@ -36,6 +35,7 @@ export async function transitionMintJob(
   to: MintJobState,
   now = new Date(),
 ) {
+  const { db } = await import("@/lib/db");
   if (!canTransitionMintJob(from, to)) {
     throw new Error(`Invalid mint job transition: ${from} -> ${to}`);
   }
@@ -56,14 +56,21 @@ export async function transitionMintJob(
 }
 
 export async function startExecutionAttempt(jobId: string, now = new Date()) {
+  const { db } = await import("@/lib/db");
   return db.transaction(async (tx) => {
+    await tx
+      .select({ id: mintJobs.id })
+      .from(mintJobs)
+      .where(eq(mintJobs.id, jobId))
+      .for("update");
     const [latest] = await tx
-      .select({ attemptNumber: executionAttempts.attemptNumber })
+      .select()
       .from(executionAttempts)
       .where(eq(executionAttempts.mintJobId, jobId))
       .orderBy(desc(executionAttempts.attemptNumber))
       .limit(1);
 
+    if (latest && ["RUNNING", "RETRYING"].includes(latest.state)) return latest;
     const [attempt] = await tx
       .insert(executionAttempts)
       .values({
@@ -85,16 +92,27 @@ export async function finishExecutionAttempt(
   failure?: { code: string; message: string },
   now = new Date(),
 ) {
-  const [attempt] = await db
-    .update(executionAttempts)
-    .set({
-      state,
-      failureCode: failure?.code ?? null,
-      failureMessage: failure?.message ?? null,
-      updatedAt: now,
-    })
-    .where(eq(executionAttempts.id, attemptId))
-    .returning();
-
-  return attempt ?? null;
+  const { db } = await import("@/lib/db");
+  const { lockExecution } = await import(
+    "@/lib/server/transaction-engine/guards"
+  );
+  return db.transaction(async (tx) => {
+    if (!(await lockExecution(tx, attemptId))) return null;
+    const [attempt] = await tx
+      .update(executionAttempts)
+      .set({
+        state,
+        failureCode: failure?.code ?? null,
+        failureMessage: failure?.message ?? null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(executionAttempts.id, attemptId),
+          inArray(executionAttempts.state, ["RUNNING", "RETRYING"]),
+        ),
+      )
+      .returning();
+    return attempt ?? null;
+  });
 }

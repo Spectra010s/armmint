@@ -5,6 +5,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -18,8 +19,12 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
   image: text("image"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 export const sessions = pgTable(
@@ -28,8 +33,12 @@ export const sessions = pgTable(
     id: text("id").primaryKey(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     token: text("token").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
     userId: text("user_id")
@@ -55,12 +64,20 @@ export const accounts = pgTable(
     accessToken: text("access_token"),
     refreshToken: text("refresh_token"),
     idToken: text("id_token"),
-    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
-    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", {
+      withTimezone: true,
+    }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", {
+      withTimezone: true,
+    }),
     scope: text("scope"),
     password: text("password"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [
     uniqueIndex("accounts_provider_account_unique").on(
@@ -78,8 +95,12 @@ export const verifications = pgTable(
     identifier: text("identifier").notNull(),
     value: text("value").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [
     index("verifications_identifier_idx").on(table.identifier),
@@ -96,13 +117,21 @@ export const telegramAccounts = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     telegramUserId: bigint("telegram_user_id", { mode: "bigint" }).notNull(),
     username: text("username"),
-    linkedAt: timestamp("linked_at", { withTimezone: true }).defaultNow().notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    linkedAt: timestamp("linked_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [
     uniqueIndex("telegram_accounts_user_id_unique").on(table.userId),
-    uniqueIndex("telegram_accounts_telegram_user_id_unique").on(table.telegramUserId),
+    uniqueIndex("telegram_accounts_telegram_user_id_unique").on(
+      table.telegramUserId,
+    ),
   ],
 );
 
@@ -116,7 +145,9 @@ export const telegramLinkTokens = pgTable(
     tokenDigest: text("token_digest").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [
     uniqueIndex("telegram_link_tokens_digest_unique").on(table.tokenDigest),
@@ -169,12 +200,19 @@ export const wallets = pgTable(
     encryptionIv: text("encryption_iv").notNull(),
     encryptionAuthTag: text("encryption_auth_tag").notNull(),
     encryptionKeyVersion: integer("encryption_key_version").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [
     uniqueIndex("wallets_user_id_unique").on(table.userId),
-    check("wallets_encryption_key_version_positive", sql`${table.encryptionKeyVersion} > 0`),
+    check(
+      "wallets_encryption_key_version_positive",
+      sql`${table.encryptionKeyVersion} > 0`,
+    ),
   ],
 );
 
@@ -190,14 +228,25 @@ export const mintJobs = pgTable(
       .references(() => wallets.id, { onDelete: "restrict" }),
     chainId: bigint("chain_id", { mode: "number" }).notNull(),
     contractAddress: text("contract_address").notNull(),
+    // Encoded contract call, including quantity/proof arguments, supplied at scheduling.
+    calldata: text("calldata"),
+    valueWei: text("value_wei").default("0").notNull(),
+    engineLeaseId: text("engine_lease_id"),
+    engineLeaseExpiresAt: timestamp("engine_lease_expires_at", {
+      withTimezone: true,
+    }),
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
     state: mintJobState("state").default("SCHEDULED").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     claimedAt: timestamp("claimed_at", { withTimezone: true }),
     claimExpiresAt: timestamp("claim_expires_at", { withTimezone: true }),
     claimedBy: text("claimed_by"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [
     uniqueIndex("mint_jobs_idempotency_key_unique").on(table.idempotencyKey),
@@ -220,11 +269,16 @@ export const executionAttempts = pgTable(
       .notNull()
       .references(() => mintJobs.id, { onDelete: "restrict" }),
     attemptNumber: integer("attempt_number").notNull(),
+    retryCount: integer("retry_count").default(0).notNull(),
     state: executionAttemptState("state").default("PENDING").notNull(),
     failureCode: text("failure_code"),
     failureMessage: text("failure_message"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [
     uniqueIndex("execution_attempts_job_number_unique").on(
@@ -232,7 +286,10 @@ export const executionAttempts = pgTable(
       table.attemptNumber,
     ),
     index("execution_attempts_job_idx").on(table.mintJobId),
-    check("execution_attempts_number_positive", sql`${table.attemptNumber} > 0`),
+    check(
+      "execution_attempts_number_positive",
+      sql`${table.attemptNumber} > 0`,
+    ),
   ],
 );
 
@@ -246,17 +303,32 @@ export const transactions = pgTable(
     replacesTransactionId: text("replaces_transaction_id"),
     chainId: bigint("chain_id", { mode: "number" }).notNull(),
     hash: text("hash"),
+    // Public, immutable signing inputs. Never store a key or signed payload here.
+    request: jsonb("request").$type<{
+      from: string;
+      to: string;
+      data: string;
+      value: string;
+      gas: string;
+      maxFeePerGas: string;
+      maxPriorityFeePerGas: string;
+    }>(),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
     nonce: bigint("nonce", { mode: "number" }).notNull(),
     state: transactionState("state").default("CREATED").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [
     uniqueIndex("transactions_hash_unique")
       .on(table.hash)
       .where(sql`${table.hash} IS NOT NULL`),
     index("transactions_attempt_idx").on(table.executionAttemptId),
-    index("transactions_replaces_idx").on(table.replacesTransactionId),
+    uniqueIndex("transactions_replaces_unique").on(table.replacesTransactionId),
     check("transactions_chain_id_positive", sql`${table.chainId} > 0`),
     check("transactions_nonce_nonnegative", sql`${table.nonce} >= 0`),
     check(
