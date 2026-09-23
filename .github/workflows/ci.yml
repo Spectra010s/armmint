@@ -37,6 +37,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      - name: Production build without runtime configuration
+        run: env -i PATH="$PATH" HOME="$HOME" NEXT_TELEMETRY_DISABLED=1 pnpm build
       - run: pnpm test
       - name: Production execution with PostgreSQL connections
         run: node --import ./tests/register.ts --experimental-test-module-mocks --test lib/server/transaction-engine/production.integration.test.ts
@@ -50,3 +52,21 @@ jobs:
         run: node --import ./tests/register.ts --experimental-test-module-mocks --test lib/auth.integration.test.ts
         env:
           AUTH_TEST_DATABASE_URL: postgres://armmint:armmint_test@localhost:5432/armmint_test
+
+  containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [web, worker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build production image without runtime secrets
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.target }}

@@ -15,9 +15,7 @@ function getPool(): Pool {
     throw new Error("Missing required server environment variable: DATABASE_URL");
   }
 
-  try {
-    new URL(connectionString);
-  } catch {
+  if (!URL.canParse(connectionString)) {
     throw new Error("Invalid URL in server environment variable: DATABASE_URL");
   }
 

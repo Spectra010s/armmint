@@ -1,11 +1,10 @@
 import { toNextJsHandler } from "better-auth/next-js";
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 import { getServerConfig } from "@/lib/server/config";
-const handlers = toNextJsHandler(auth);
 
 async function handle(request: Request, method: "GET" | "POST") {
   try {
-    const response = await handlers[method](request);
+    const response = await toNextJsHandler(getAuth())[method](request);
     const headers = new Headers(response.headers);
     headers.set("Cache-Control", "no-store");
     headers.set("Referrer-Policy", "no-referrer");

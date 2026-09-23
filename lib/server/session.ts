@@ -2,11 +2,13 @@ import "server-only";
 
 import { headers } from "next/headers";
 
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 
 export async function getCurrentSession() {
-  return auth.api.getSession({
-    headers: await headers(),
+  // Enter request scope before initializing runtime dependencies during rendering.
+  const requestHeaders = await headers();
+  return getAuth().api.getSession({
+    headers: requestHeaders,
   });
 }
 
