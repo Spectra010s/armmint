@@ -40,7 +40,7 @@ export async function failExecution(
 
     if (!failedTransaction) return null;
 
-    await tx
+    const [failedAttempt] = await tx
       .update(executionAttempts)
       .set({
         state: "FAILED",
@@ -48,12 +48,36 @@ export async function failExecution(
         failureMessage: failure.message,
         updatedAt: now,
       })
-      .where(eq(executionAttempts.id, row.attemptId));
+      .where(
+        and(
+          eq(executionAttempts.id, row.attemptId),
+          inArray(executionAttempts.state, ["RUNNING", "RETRYING"]),
+        ),
+      )
+      .returning({ id: executionAttempts.id });
 
-    await tx
+    if (!failedAttempt) return null;
+
+    const [failedJob] = await tx
       .update(mintJobs)
       .set({ state: "FAILED", updatedAt: now })
-      .where(eq(mintJobs.id, row.jobId));
+      .where(
+        and(
+          eq(mintJobs.id, row.jobId),
+          inArray(mintJobs.state, [
+            "CLAIMED",
+            "SIMULATING",
+            "SIGNING",
+            "SUBMITTING",
+            "SUBMITTED",
+            "RETRYING",
+            "CONFIRMING",
+          ]),
+        ),
+      )
+      .returning({ id: mintJobs.id });
+
+    if (!failedJob) return null;
 
     return { transactionId, attemptId: row.attemptId, jobId: row.jobId };
   });
