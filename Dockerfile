@@ -16,7 +16,8 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm postinstall && pnpm build
+# Keep the optional static-assets directory available for the runtime COPY.
+RUN mkdir -p public && pnpm postinstall && pnpm build
 
 # Web runtime: minimal standalone Next.js server.
 FROM node:24.19.0-alpine AS web

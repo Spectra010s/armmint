@@ -38,7 +38,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - name: Production build without runtime configuration
-        run: env -i PATH="$PATH" HOME="$HOME" NEXT_TELEMETRY_DISABLED=1 pnpm build
+        run: env -i PATH="$PATH" HOME="$HOME" NEXT_TELEMETRY_DISABLED=1 node node_modules/next/dist/bin/next build
       - run: pnpm test
       - name: Production execution with PostgreSQL connections
         run: node --import ./tests/register.ts --experimental-test-module-mocks --test lib/server/transaction-engine/production.integration.test.ts
