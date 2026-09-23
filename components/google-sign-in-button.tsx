@@ -1,0 +1,4 @@
+"use client";
+import { useState } from "react";
+import { authClient } from "@/lib/auth-client";
+export function GoogleSignInButton(){const[pending,setPending]=useState(false);const[error,setError]=useState(false);async function signIn(){setPending(true);setError(false);try{const result=await authClient.signIn.social({provider:"google",callbackURL:"/dashboard",errorCallbackURL:"/auth/error"});if(result.error)setError(true);}catch{setError(true)}finally{setPending(false)}}return <div className="flex flex-col gap-3"><button type="button" onClick={signIn} disabled={pending} className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-neutral-200 disabled:opacity-50">{pending?"Redirecting…":"Continue with Google"}</button>{error?<p role="alert" className="text-sm text-red-300">Unable to sign in with Google. Please try again.</p>:null}</div>}
