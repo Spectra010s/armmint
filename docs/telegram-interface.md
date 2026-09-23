@@ -9,8 +9,7 @@ as other execution entry points.
 Create the bot through BotFather and configure `TELEGRAM_BOT_TOKEN`,
 `TELEGRAM_BOT_USERNAME`, and a random `TELEGRAM_WEBHOOK_SECRET`. Set
 `BETTER_AUTH_URL` to the public HTTPS application origin. Set `BASE_CHAIN_ID` to
-`8453` for Base or `84532` for Base Sepolia, matching `BASE_RPC_URL`. The default
-is Base. The execution adapter also checks the RPC network before signing.
+`8453` for Base or `84532` for Base Sepolia, matching `BASE_RPC_URL`. `BASE_CHAIN_ID` is required and must match the RPC network — there is no default. The execution adapter also checks the RPC network before signing.
 
 After deploying the application with its current database schema, run
 `pnpm telegram:setup` to register the private-chat command menu and webhook.
