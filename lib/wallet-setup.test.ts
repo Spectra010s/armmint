@@ -9,13 +9,18 @@ import {
   WALLET_SETUP_GENERIC_ERROR,
   WALLET_SETUP_REQUIRED_ERROR,
 } from "./wallet-setup.ts";
+import { privateKeyToAccount } from "viem/accounts";
+
+const VALID_KEY = `0x${"ab".repeat(32)}`;
+const VALID_ADDRESS = privateKeyToAccount(VALID_KEY as `0x${string}`).address;
+const OTHER_KEY = `0x${"cd".repeat(32)}`;
 
 test("requires explicit burner acknowledgement before building a payload", () => {
   assert.throws(
     () =>
       buildWalletSetupPayload({
-        address: "0xabc",
-        privateKey: "secret",
+        address: VALID_ADDRESS,
+        privateKey: VALID_KEY,
         burnerWalletAcknowledged: false,
       }),
     new RegExp(WALLET_SETUP_ACK_ERROR),
@@ -27,7 +32,10 @@ test("requires a wallet address and private key without echoing secrets", () => 
 
   for (const input of [
     { address: "   ", privateKey: secret, burnerWalletAcknowledged: true },
-    { address: "0xabc", privateKey: "", burnerWalletAcknowledged: true },
+    { address: VALID_ADDRESS, privateKey: "", burnerWalletAcknowledged: true },
+    { address: "0xabc", privateKey: secret, burnerWalletAcknowledged: true },
+    { address: VALID_ADDRESS, privateKey: "not-a-key", burnerWalletAcknowledged: true },
+    { address: VALID_ADDRESS, privateKey: OTHER_KEY, burnerWalletAcknowledged: true },
   ]) {
     try {
       buildWalletSetupPayload(input);
@@ -41,14 +49,14 @@ test("requires a wallet address and private key without echoing secrets", () => 
 
 test("trims the address and keeps server-side acknowledgement authoritative", () => {
   const payload = buildWalletSetupPayload({
-    address: "  0xabc  ",
-    privateKey: "secret",
+    address: `  ${VALID_ADDRESS}  `,
+    privateKey: VALID_KEY,
     burnerWalletAcknowledged: true,
   });
 
   assert.deepEqual(payload, {
-    address: "0xabc",
-    privateKey: "secret",
+    address: VALID_ADDRESS,
+    privateKey: VALID_KEY,
     burnerWalletAcknowledged: true,
   });
 });
