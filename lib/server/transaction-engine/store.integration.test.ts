@@ -231,7 +231,7 @@ test("replacement submission is idempotent against late duplicate writes", async
 });
 
 test("held execution lease cannot be stolen but can be renewed", async () => {
-  const before = new Date();
+  const startedAt = new Date();
   const first = await acquireExecutionLease("job-1", "attempt-1");
   assert.ok(first);
 
@@ -243,8 +243,8 @@ test("held execution lease cannot be stolen but can be renewed", async () => {
     })
     .from(mintJobs)
     .where(eq(mintJobs.id, "job-1"));
-  assert.ok(held.claimExpiresAt && held.claimExpiresAt > before);
-  assert.ok(held.engineLeaseExpiresAt && held.engineLeaseExpiresAt > before);
+  assert.ok(held.claimExpiresAt && held.claimExpiresAt > startedAt);
+  assert.ok(held.engineLeaseExpiresAt && held.engineLeaseExpiresAt > startedAt);
 
   // Second acquisition while held fails.
   assert.equal(await acquireExecutionLease("job-1", "attempt-1"), null);
