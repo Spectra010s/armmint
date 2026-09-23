@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, gt, isNull } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { telegramAccounts, telegramLinkTokens } from "@/lib/db/schema";
+import { telegramAccounts, telegramLinkTokens, users } from "@/lib/db/schema";
 import {
   digestTelegramLinkToken,
   generateTelegramLinkToken,
@@ -22,11 +22,26 @@ export type TelegramLinkResult =
   | { status: "telegram_already_linked" }
   | { status: "user_already_linked" };
 
+export class TelegramAlreadyLinkedError extends Error {}
+
 export async function issueTelegramLinkToken(userId: string) {
   const token = generateTelegramLinkToken();
   const expiresAt = telegramLinkTokenExpiresAt();
 
   await db.transaction(async (tx) => {
+    // Serialize issuers so concurrent requests leave only the newest token valid.
+    const [user] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId))
+      .for("update");
+    if (!user) throw new Error("Unauthorized");
+    const [existing] = await tx
+      .select({ id: telegramAccounts.id })
+      .from(telegramAccounts)
+      .where(eq(telegramAccounts.userId, userId));
+    if (existing)
+      throw new TelegramAlreadyLinkedError("Telegram is already linked");
     await tx
       .delete(telegramLinkTokens)
       .where(
@@ -125,4 +140,12 @@ export async function resolveTelegramUser(
     .limit(1);
 
   return account?.userId ?? null;
+}
+
+export async function getTelegramLinkStatus(userId: string) {
+  const [account] = await db
+    .select({ username: telegramAccounts.username })
+    .from(telegramAccounts)
+    .where(eq(telegramAccounts.userId, userId));
+  return { linked: Boolean(account), username: account?.username ?? null };
 }

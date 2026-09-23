@@ -178,7 +178,7 @@ test("secure linking remains the real single-use token service", async () => {
   assert.match(r!.text, /linked successfully/);
   assert.match(
     (await send(`/start ${token}`, 303, new Date()))!.text,
-    /invalid or expired/,
+    /already linked/,
   );
   const [linked] = await db
     .select()

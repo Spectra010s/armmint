@@ -1,3 +1,5 @@
+import { SignOutButton } from "@/components/sign-out-button";
+import { getTelegramLinkStatus } from "@/lib/server/telegram-link-service";
 import { TelegramLinkPanel } from "@/components/telegram-link-panel";
 import { BurnerWalletWarning } from "@/components/burner-wallet-warning";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
@@ -5,6 +7,9 @@ import { getCurrentSession } from "@/lib/server/session";
 
 export default async function Home() {
   const session = await getCurrentSession();
+  const telegram = session?.user
+    ? await getTelegramLinkStatus(session.user.id)
+    : null;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-6 text-zinc-950 dark:bg-black dark:text-zinc-50">
@@ -26,7 +31,8 @@ export default async function Home() {
                 {session.user.email}
               </p>
             </div>
-            <TelegramLinkPanel />
+            <SignOutButton />
+            <TelegramLinkPanel initialStatus={telegram!} />
             <BurnerWalletWarning />
           </div>
         ) : (

@@ -56,7 +56,11 @@ test("rejects wallet setup without explicit burner acknowledgement", async () =>
   for (const body of [
     { address: "0xabc", privateKey: "secret" },
     { address: "0xabc", privateKey: "secret", burnerWalletAcknowledged: false },
-    { address: "0xabc", privateKey: "secret", burnerWalletAcknowledged: "true" },
+    {
+      address: "0xabc",
+      privateKey: "secret",
+      burnerWalletAcknowledged: "true",
+    },
   ]) {
     const response = await POST(walletRequest(body));
     assert.equal(response.status, 400);
@@ -135,4 +139,22 @@ test("rejects a second wallet for the same account without leaking key material"
   const body = (await second.json()) as { error: string };
   assert.equal(body.error, "A wallet is already configured for this account");
   assert.equal(JSON.stringify(body).includes("second-secret"), false);
+});
+
+test("missing authenticated context returns 401 without processing wallet secrets", async () => {
+  currentUserId = null;
+  const result = await POST(
+    walletRequest({ privateKey: "private-wallet-input" }),
+  );
+  assert.equal(result.status, 401);
+  assert.deepEqual(await result.json(), { error: "Unauthorized" });
+  assert.equal((await db.select().from(wallets)).length, 0);
+});
+
+test("malformed authenticated wallet bodies fail without exceptions", async () => {
+  for (const body of [null, [], "private-wallet-input"]) {
+    const response = await POST(walletRequest(body));
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: "Invalid request" });
+  }
 });

@@ -19,7 +19,10 @@ import {
   MintInputError,
   type MintConfiguration,
 } from "./mint-job-service";
-import { consumeTelegramLinkToken } from "./telegram-link-service";
+import {
+  consumeTelegramLinkToken,
+  resolveTelegramUser,
+} from "./telegram-link-service";
 import { parseTelegramStartToken } from "./telegram-webhook";
 import type {
   MintDraft,
@@ -199,6 +202,15 @@ export async function handleTelegramInput(
   const token = parseTelegramStartToken(input.text);
   if (token) {
     const result = await consumeTelegramLinkToken(token, input.identity, now);
+    if (
+      result.status === "invalid_token" &&
+      (await resolveTelegramUser(input.identity.id))
+    ) {
+      return reply(
+        "Your Telegram account is already linked to ArmMint. This link was not applied again. Choose an action below.",
+        menu,
+      );
+    }
     return result.status === "linked"
       ? reply(
           "Telegram linked successfully.\nArmMint uses your dedicated burner wallet to simulate, sign, and submit the mint jobs you confirm. Set up your wallet securely, then create a mint.",
