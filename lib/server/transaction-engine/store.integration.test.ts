@@ -1,3 +1,8 @@
+import {
+  mintJobState,
+  executionAttemptState,
+  transactionState,
+} from "@/lib/db/schema";
 import assert from "node:assert/strict";
 import { after, before, beforeEach, mock, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
@@ -28,7 +33,16 @@ const {
 
 before(async () => {
   const schema = await pushSchema(
-    { users, wallets, mintJobs, executionAttempts, transactions },
+    {
+      mintJobState,
+      executionAttemptState,
+      transactionState,
+      users,
+      wallets,
+      mintJobs,
+      executionAttempts,
+      transactions,
+    },
     db,
   );
   await schema.apply();
@@ -91,7 +105,8 @@ test("submitted transaction is recovered instead of creating duplicate work", as
   const reserved = await reserveTransaction("attempt-1", 84532, 9);
   assert.ok(reserved);
 
-  const hash = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const hash =
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   await markTransactionSubmitted(reserved.id, hash);
 
   const recovered = await findRecoverableTransaction("job-1");
@@ -108,7 +123,8 @@ test("terminal transactions are not returned as recoverable", async () => {
   const reserved = await reserveTransaction("attempt-1", 84532, 9);
   assert.ok(reserved);
 
-  const hash = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const hash =
+    "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
   await markTransactionSubmitted(reserved.id, hash);
   await markTransactionTerminal(reserved.id, "CONFIRMED");
 

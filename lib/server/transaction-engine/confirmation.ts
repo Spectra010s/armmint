@@ -6,7 +6,7 @@ export type ConfirmationOutcome =
   | { kind: "pending"; hash: `0x${string}` };
 
 export async function observeTransaction(
-  adapter: TransactionChainAdapter,
+  adapter: Pick<TransactionChainAdapter, "waitForReceipt">,
   hash: `0x${string}`,
 ): Promise<ConfirmationOutcome> {
   const receipt = await adapter.waitForReceipt(hash);

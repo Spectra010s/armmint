@@ -1,3 +1,8 @@
+import {
+  mintJobState,
+  executionAttemptState,
+  transactionState,
+} from "@/lib/db/schema";
 import assert from "node:assert/strict";
 import { after, before, beforeEach, mock, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
@@ -13,7 +18,18 @@ const databaseMock = mock.module("@/lib/db", { exports: { db } });
 const { scheduleExecutionRetry } = await import("./retry-state.ts");
 
 before(async () => {
-  const schema = await pushSchema({ users, wallets, mintJobs, executionAttempts }, db);
+  const schema = await pushSchema(
+    {
+      mintJobState,
+      executionAttemptState,
+      transactionState,
+      users,
+      wallets,
+      mintJobs,
+      executionAttempts,
+    },
+    db,
+  );
   await schema.apply();
 });
 
@@ -22,19 +38,33 @@ beforeEach(async () => {
   await db.delete(mintJobs);
   await db.delete(wallets);
   await db.delete(users);
-  await db.insert(users).values({ id: "user-1", name: "Retry Test", email: "retry@example.test" });
+  await db
+    .insert(users)
+    .values({ id: "user-1", name: "Retry Test", email: "retry@example.test" });
   await db.insert(wallets).values({
-    id: "wallet-1", userId: "user-1", address: "0xabc",
-    encryptedPrivateKey: "ciphertext", encryptionIv: "iv",
-    encryptionAuthTag: "tag", encryptionKeyVersion: 1,
+    id: "wallet-1",
+    userId: "user-1",
+    address: "0xabc",
+    encryptedPrivateKey: "ciphertext",
+    encryptionIv: "iv",
+    encryptionAuthTag: "tag",
+    encryptionKeyVersion: 1,
   });
   await db.insert(mintJobs).values({
-    id: "job-1", userId: "user-1", walletId: "wallet-1", chainId: 84532,
-    contractAddress: "0xcontract", scheduledFor: new Date("2026-09-22T12:00:00Z"),
-    state: "SUBMITTING", idempotencyKey: "retry-job-1",
+    id: "job-1",
+    userId: "user-1",
+    walletId: "wallet-1",
+    chainId: 84532,
+    contractAddress: "0xcontract",
+    scheduledFor: new Date("2026-09-22T12:00:00Z"),
+    state: "SUBMITTING",
+    idempotencyKey: "retry-job-1",
   });
   await db.insert(executionAttempts).values({
-    id: "attempt-1", mintJobId: "job-1", attemptNumber: 1, state: "RUNNING",
+    id: "attempt-1",
+    mintJobId: "job-1",
+    attemptNumber: 1,
+    state: "RUNNING",
   });
 });
 
@@ -50,8 +80,14 @@ test("retry state is persisted for both attempt and job", async () => {
     jobId: "job-1",
   });
 
-  const [attempt] = await db.select().from(executionAttempts).where(eq(executionAttempts.id, "attempt-1"));
-  const [job] = await db.select().from(mintJobs).where(eq(mintJobs.id, "job-1"));
+  const [attempt] = await db
+    .select()
+    .from(executionAttempts)
+    .where(eq(executionAttempts.id, "attempt-1"));
+  const [job] = await db
+    .select()
+    .from(mintJobs)
+    .where(eq(mintJobs.id, "job-1"));
   assert.equal(attempt?.state, "RETRYING");
   assert.equal(job?.state, "RETRYING");
 });

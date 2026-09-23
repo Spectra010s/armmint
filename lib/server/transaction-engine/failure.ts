@@ -1,9 +1,8 @@
 import "server-only";
-
-import { and, eq, inArray } from "drizzle-orm";
-
+import { eq, and, inArray, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { executionAttempts, mintJobs, transactions } from "@/lib/db/schema";
+import { lockExecution } from "./guards";
 
 export async function failExecution(
   transactionId: string,
@@ -12,35 +11,35 @@ export async function failExecution(
   now = new Date(),
 ) {
   return db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({
-        attemptId: executionAttempts.id,
-        jobId: executionAttempts.mintJobId,
-      })
+    const [ref] = await tx
+      .select()
       .from(transactions)
-      .innerJoin(
-        executionAttempts,
-        eq(transactions.executionAttemptId, executionAttempts.id),
-      )
+      .where(eq(transactions.id, transactionId));
+    if (!ref) return null;
+    const context = await lockExecution(tx, ref.executionAttemptId);
+    if (!context) return null;
+    const [row] = await tx
+      .select()
+      .from(transactions)
       .where(eq(transactions.id, transactionId))
-      .limit(1);
-
-    if (!row) return null;
-
-    const [failedTransaction] = await tx
+      .for("update");
+    if (!["CREATED", "SUBMITTED", "CONFIRMING", "REPLACED"].includes(row.state))
+      return null;
+    await tx
       .update(transactions)
       .set({ state: transactionState, updatedAt: now })
+      .where(eq(transactions.id, transactionId));
+    await tx
+      .update(transactions)
+      .set({ state: "REPLACED", updatedAt: now })
       .where(
         and(
-          eq(transactions.id, transactionId),
+          eq(transactions.executionAttemptId, ref.executionAttemptId),
+          ne(transactions.id, transactionId),
           inArray(transactions.state, ["CREATED", "SUBMITTED", "CONFIRMING"]),
         ),
-      )
-      .returning({ id: transactions.id });
-
-    if (!failedTransaction) return null;
-
-    const [failedAttempt] = await tx
+      );
+    await tx
       .update(executionAttempts)
       .set({
         state: "FAILED",
@@ -48,37 +47,40 @@ export async function failExecution(
         failureMessage: failure.message,
         updatedAt: now,
       })
-      .where(
-        and(
-          eq(executionAttempts.id, row.attemptId),
-          inArray(executionAttempts.state, ["RUNNING", "RETRYING"]),
-        ),
-      )
-      .returning({ id: executionAttempts.id });
-
-    if (!failedAttempt) return null;
-
-    const [failedJob] = await tx
+      .where(eq(executionAttempts.id, context.attempt.id));
+    await tx
       .update(mintJobs)
       .set({ state: "FAILED", updatedAt: now })
-      .where(
-        and(
-          eq(mintJobs.id, row.jobId),
-          inArray(mintJobs.state, [
-            "CLAIMED",
-            "SIMULATING",
-            "SIGNING",
-            "SUBMITTING",
-            "SUBMITTED",
-            "RETRYING",
-            "CONFIRMING",
-          ]),
-        ),
-      )
-      .returning({ id: mintJobs.id });
-
-    if (!failedJob) return null;
-
-    return { transactionId, attemptId: row.attemptId, jobId: row.jobId };
+      .where(eq(mintJobs.id, context.job.id));
+    return {
+      transactionId,
+      attemptId: context.attempt.id,
+      jobId: context.job.id,
+    };
+  });
+}
+export async function failUnsubmittedExecution(
+  attemptId: string,
+  code: string,
+  message: string,
+  jobId?: string,
+) {
+  return db.transaction(async (tx) => {
+    const context = await lockExecution(tx, attemptId);
+    if (!context || (jobId && context.job.id !== jobId)) return;
+    const rows = await tx
+      .select()
+      .from(transactions)
+      .where(eq(transactions.executionAttemptId, attemptId));
+    // A lost response is not proof of failure. Keep monitoring anything signed.
+    if (rows.some((row) => row.hash)) return;
+    await tx
+      .update(executionAttempts)
+      .set({ state: "FAILED", failureCode: code, failureMessage: message })
+      .where(eq(executionAttempts.id, attemptId));
+    await tx
+      .update(mintJobs)
+      .set({ state: "FAILED" })
+      .where(eq(mintJobs.id, context.job.id));
   });
 }

@@ -1,19 +1,23 @@
 import "server-only";
-
 import { beginConfirmation, completeConfirmedExecution } from "./completion";
-import { observeTransaction } from "./confirmation";
 import { TransactionEngineError } from "./errors";
-import { failExecution } from "./failure";
-import { recoverSubmission } from "./submission-recovery";
+import { failExecution, failUnsubmittedExecution } from "./failure";
+import { buildReplacementRequest } from "./replacement";
+import { DEFAULT_RETRY_POLICY, shouldRetry, type RetryPolicy } from "./retry";
+import { scheduleExecutionRetry } from "./retry-state";
 import {
-  findRecoverableTransaction,
+  acquireExecutionLease,
+  checkpointSignedHash,
+  decodeRequest,
+  findJobTransactions,
   markTransactionSubmitted,
+  recordNonceConflict,
+  releaseExecutionLease,
+  reserveReplacementTransaction,
   reserveTransaction,
+  setExecutionStage,
 } from "./store";
-import type {
-  TransactionChainAdapter,
-  TransactionRequest,
-} from "./types";
+import type { TransactionChainAdapter, TransactionRequest } from "./types";
 
 export type ExecuteTransactionInput = {
   mintJobId: string;
@@ -24,147 +28,200 @@ export type ExecuteTransactionInput = {
 export async function executeTransaction(
   adapter: TransactionChainAdapter,
   input: ExecuteTransactionInput,
+  policy: RetryPolicy = DEFAULT_RETRY_POLICY,
 ) {
-  const existing = await findRecoverableTransaction(input.mintJobId);
-
-  if (existing) {
-    const recovery = recoverSubmission(existing);
-
-    if (recovery.kind === "await") {
-      const outcome = await observeSafely(adapter, recovery.hash);
-      await persistOutcome(existing.id, existing.executionAttemptId, outcome);
-      return { transactionId: existing.id, hash: recovery.hash, recovered: true };
-    }
-
-    let submitted;
-    try {
-      submitted = await adapter.submit({ ...input.request, nonce: recovery.nonce });
-    } catch {
-      throw new TransactionEngineError(
-        "SUBMISSION_FAILED",
-        "Transaction resubmission failed",
-        true,
-      );
-    }
-
-    assertSubmittedNonce(recovery.nonce, submitted.nonce);
-
-    const persisted = await markTransactionSubmitted(existing.id, submitted.hash);
-    if (!persisted) {
-      throw new TransactionEngineError(
-        "SUBMISSION_FAILED",
-        "Recovered transaction could not be persisted",
-        true,
-      );
-    }
-
-    const outcome = await observeSafely(adapter, submitted.hash);
-    await persistOutcome(existing.id, existing.executionAttemptId, outcome);
-    return { transactionId: existing.id, hash: submitted.hash, recovered: true };
-  }
-
-  try {
-    await adapter.simulate(input.request);
-  } catch {
-    throw new TransactionEngineError(
-      "SIMULATION_FAILED",
-      "Transaction simulation failed",
-      false,
-    );
-  }
-
-  const nonce = await adapter.getPendingNonce(input.request.from);
-  const transaction = await reserveTransaction(
+  shouldRetry(1, policy); // Validate policy before doing work.
+  const lease = await acquireExecutionLease(
+    input.mintJobId,
     input.executionAttemptId,
-    input.request.chainId,
-    nonce,
   );
-
-  let submitted;
+  if (!lease) return { status: "inactive" as const };
+  const stage = (state: Parameters<typeof setExecutionStage>[2]) =>
+    setExecutionStage(input.mintJobId, lease.id, state);
   try {
-    submitted = await adapter.submit({ ...input.request, nonce });
-  } catch {
-    throw new TransactionEngineError(
-      "SUBMISSION_FAILED",
-      "Transaction submission failed",
-      true,
+    let rows = await findJobTransactions(input.mintJobId);
+    const recovered = rows.length > 0;
+    // Observe every signed candidate, including an original replaced locally.
+    // A miner may include the original while the replacement is in flight.
+    for (const row of rows) {
+      if (!row.hash || ["REVERTED", "DROPPED"].includes(row.state)) continue;
+      const receipt = await adapter.waitForReceipt(row.hash as `0x${string}`);
+      if (receipt.state === "CONFIRMED") {
+        if (!(await completeConfirmedExecution(row.id)))
+          return { status: "inactive" as const };
+        return {
+          status: "confirmed" as const,
+          transactionId: row.id,
+          hash: row.hash,
+          recovered,
+        };
+      }
+      if (receipt.state === "REVERTED") {
+        await failExecution(
+          row.id,
+          { code: "REVERTED", message: "Mint transaction reverted on chain" },
+          "REVERTED",
+        );
+        return {
+          status: "reverted" as const,
+          transactionId: row.id,
+          hash: row.hash,
+          recovered,
+        };
+      }
+    }
+    let transaction = rows.find((row) =>
+      ["CREATED", "SUBMITTED", "CONFIRMING"].includes(row.state),
     );
-  }
-
-  assertSubmittedNonce(nonce, submitted.nonce);
-
-  const persisted = await markTransactionSubmitted(transaction.id, submitted.hash);
-  if (!persisted) {
-    throw new TransactionEngineError(
-      "SUBMISSION_FAILED",
-      "Submitted transaction could not be persisted",
-      true,
-    );
-  }
-
-  const outcome = await observeSafely(adapter, submitted.hash);
-  await persistOutcome(transaction.id, input.executionAttemptId, outcome);
-
-  return {
-    transactionId: transaction.id,
-    hash: submitted.hash,
-    recovered: false,
-  };
-}
-
-async function persistOutcome(
-  transactionId: string,
-  executionAttemptId: string,
-  outcome: Awaited<ReturnType<typeof observeTransaction>>,
-) {
-  if (outcome.kind === "confirmed") {
-    await beginConfirmation(transactionId);
-    const completed = await completeConfirmedExecution(transactionId);
-    if (!completed) {
-      throw new TransactionEngineError(
-        "CONFIRMATION_FAILED",
-        "Confirmed transaction could not complete its execution state",
+    if (rows.length && !transaction) return { status: "inactive" as const };
+    if (
+      transaction &&
+      adapter.getLatestNonce &&
+      (await adapter.getLatestNonce(input.request.from)) > transaction.nonce
+    ) {
+      // Receipts can lag the latest nonce. Do not guess a dropped/failed state or
+      // mint with a new nonce; stop signing and let subsequent receipt polls resolve it.
+      await recordNonceConflict(input.executionAttemptId);
+      return {
+        status: "nonce_consumed" as const,
+        transactionId: transaction.id,
+      };
+    }
+    const attemptsUsed =
+      lease.context.attempt.attemptNumber + lease.context.attempt.retryCount;
+    if (
+      transaction?.hash &&
+      transaction.state === "CREATED" &&
+      adapter.isKnown &&
+      (await adapter.isKnown(transaction.hash as `0x${string}`))
+    ) {
+      await markTransactionSubmitted(transaction.id, transaction.hash);
+      rows = await findJobTransactions(input.mintJobId);
+      transaction = rows.find((row) => row.id === transaction!.id)!;
+    }
+    if (transaction?.hash && transaction.state !== "CREATED") {
+      await beginConfirmation(transaction.id);
+      const age =
+        Date.now() -
+        (transaction.submittedAt ?? transaction.createdAt).getTime();
+      if (age < (policy.replacementAfterMs ?? 120_000))
+        return { status: "pending" as const, transactionId: transaction.id };
+      const retry = await scheduleExecutionRetry(
+        input.executionAttemptId,
+        policy,
+        new Date(),
         true,
       );
+      if (retry?.kind !== "scheduled")
+        return {
+          status: "retry_exhausted" as const,
+          transactionId: transaction.id,
+        };
+      const request = buildReplacementRequest(
+        decodeRequest(transaction),
+        policy.gasBumpBps,
+      );
+      await stage("SIMULATING");
+      await adapter.simulate(request);
+      transaction = await reserveReplacementTransaction(
+        transaction.id,
+        input.executionAttemptId,
+        request.chainId,
+        request.nonce,
+        new Date(),
+        request,
+      );
+    } else if (lease.context.attempt.failureCode === "RETRY_EXHAUSTED") {
+      return { status: "retry_exhausted" as const };
+    } else if (!transaction) {
+      await stage("SIMULATING");
+      const request = adapter.prepare
+        ? await adapter.prepare(input.request)
+        : input.request;
+      await adapter.simulate(request);
+      const pendingNonce = await adapter.getPendingNonce(request.from);
+      transaction = await reserveTransaction(
+        input.executionAttemptId,
+        request.chainId,
+        pendingNonce,
+        new Date(),
+        { ...request, nonce: pendingNonce },
+      );
     }
-    return;
-  }
-
-  if (outcome.kind === "pending") {
-    await beginConfirmation(transactionId);
-    return;
-  }
-
-  const message = outcome.reason ?? "Transaction reverted";
-  await failExecution(
-    transactionId,
-    { code: "REVERTED", message },
-    "REVERTED",
-  );
-  throw new TransactionEngineError("REVERTED", message, false);
-}
-
-function assertSubmittedNonce(expected: number, actual: number) {
-  if (expected !== actual) {
-    throw new TransactionEngineError(
-      "NONCE_CONFLICT",
-      `Transaction submission returned nonce ${actual}; expected ${expected}`,
-      false,
+    if (!transaction) return { status: "inactive" as const };
+    const request = decodeRequest(transaction);
+    // Recovery of an unsigned or ambiguously broadcast transaction uses exactly
+    // its persisted request. Never let a refreshed job or fee quote change it.
+    await stage("SIMULATING");
+    await adapter.simulate(request);
+    await stage("SIGNING");
+    const submitted = await adapter.submit(request, async (hash) => {
+      await stage("SUBMITTING");
+      if (!(await checkpointSignedHash(transaction!.id, hash, lease.id)))
+        throw new TransactionEngineError(
+          "LEASE_LOST",
+          "Execution is no longer active",
+        );
+    });
+    if (submitted.nonce !== request.nonce)
+      throw new TransactionEngineError(
+        "NONCE_CONFLICT",
+        "Signer changed reserved nonce",
+      );
+    const persisted = await markTransactionSubmitted(
+      transaction.id,
+      submitted.hash,
     );
-  }
-}
-
-async function observeSafely(
-  adapter: TransactionChainAdapter,
-  hash: `0x${string}`,
-) {
-  try {
-    return await observeTransaction(adapter, hash);
-  } catch {
-    throw new TransactionEngineError(
-      "CONFIRMATION_FAILED",
-      "Transaction confirmation lookup failed",
-      true,
+    if (!persisted) return { status: "inactive" as const };
+    const receipt = await adapter.waitForReceipt(submitted.hash);
+    if (receipt.state === "CONFIRMED")
+      await completeConfirmedExecution(transaction.id);
+    else if (receipt.state === "REVERTED")
+      await failExecution(
+        transaction.id,
+        { code: "REVERTED", message: "Mint transaction reverted on chain" },
+        "REVERTED",
+      );
+    else await beginConfirmation(transaction.id);
+    return {
+      status: receipt.state.toLowerCase(),
+      transactionId: transaction.id,
+      hash: submitted.hash,
+      recovered,
+      attemptsUsed,
+    };
+  } catch (error) {
+    // Only stable, locally defined messages cross the engine boundary.
+    const safe =
+      error instanceof TransactionEngineError
+        ? error
+        : new TransactionEngineError(
+            "RPC_FAILED",
+            "Transaction execution interrupted",
+            true,
+          );
+    if (safe.code === "LEASE_LOST") return { status: "inactive" as const };
+    const rows = await findJobTransactions(input.mintJobId);
+    const mayBeOnChain = rows.some((row) => row.hash);
+    if (!safe.retryable && !mayBeOnChain) {
+      await failUnsubmittedExecution(
+        input.executionAttemptId,
+        safe.code,
+        safe.message,
+      );
+      return { status: "failed" as const, code: safe.code };
+    }
+    const retry = await scheduleExecutionRetry(
+      input.executionAttemptId,
+      policy,
+      new Date(),
+      mayBeOnChain,
     );
+    return {
+      status: retry?.kind === "exhausted" ? "retry_exhausted" : "retrying",
+      code: safe.code,
+    };
+  } finally {
+    await releaseExecutionLease(input.mintJobId, lease.id);
   }
 }

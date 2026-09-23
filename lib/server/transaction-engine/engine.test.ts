@@ -42,8 +42,8 @@ class FakeAdapter implements TransactionChainAdapter {
 
 test("adapter contract keeps simulation before submission", async () => {
   const adapter = new FakeAdapter();
-  await adapter.simulate(request);
-  const nonce = await adapter.getPendingNonce(request.from);
+  await adapter.simulate();
+  const nonce = await adapter.getPendingNonce();
   await adapter.submit({ ...request, nonce });
 
   assert.equal(adapter.simulations, 1);

@@ -1,3 +1,8 @@
+import {
+  mintJobState,
+  executionAttemptState,
+  transactionState,
+} from "@/lib/db/schema";
 import assert from "node:assert/strict";
 import { after, before, beforeEach, mock, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
@@ -17,12 +22,22 @@ const client = new PGlite();
 const db = drizzle(client);
 const databaseMock = mock.module("@/lib/db", { exports: { db } });
 
-const { beginConfirmation, completeConfirmedExecution } =
-  await import("./completion.ts");
+const { beginConfirmation, completeConfirmedExecution } = await import(
+  "./completion.ts"
+);
 
 before(async () => {
   const schema = await pushSchema(
-    { users, wallets, mintJobs, executionAttempts, transactions },
+    {
+      mintJobState,
+      executionAttemptState,
+      transactionState,
+      users,
+      wallets,
+      mintJobs,
+      executionAttempts,
+      transactions,
+    },
     db,
   );
   await schema.apply();

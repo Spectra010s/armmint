@@ -1,15 +1,15 @@
+import {
+  mintJobState,
+  executionAttemptState,
+  transactionState,
+} from "@/lib/db/schema";
 import assert from "node:assert/strict";
 import { after, before, beforeEach, mock, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { pushSchema } from "drizzle-kit/api";
 
-import {
-  executionAttempts,
-  mintJobs,
-  users,
-  wallets,
-} from "@/lib/db/schema";
+import { executionAttempts, mintJobs, users, wallets } from "@/lib/db/schema";
 
 const client = new PGlite();
 const db = drizzle(client);
@@ -21,7 +21,15 @@ const { startExecutionAttempt } = await import("./mint-job-lifecycle.ts");
 
 before(async () => {
   const schema = await pushSchema(
-    { users, wallets, mintJobs, executionAttempts },
+    {
+      mintJobState,
+      executionAttemptState,
+      transactionState,
+      users,
+      wallets,
+      mintJobs,
+      executionAttempts,
+    },
     db,
   );
   await schema.apply();
@@ -135,7 +143,7 @@ test("active leases are not stolen during recovery", async () => {
   assert.equal(await claimNextDueMintJob("other-worker", now), null);
 });
 
-test("execution attempts remain auditable across retries", async () => {
+test("active execution attempts are reused across worker retries", async () => {
   const now = new Date("2026-09-22T12:00:00Z");
   await insertJob("job-retry", new Date(now.getTime() - 1_000));
 
@@ -146,11 +154,11 @@ test("execution attempts remain auditable across retries", async () => {
   );
 
   assert.equal(first?.attemptNumber, 1);
-  assert.equal(second?.attemptNumber, 2);
+  assert.equal(second?.id, first?.id);
+  assert.equal(second?.attemptNumber, 1);
 
   const attempts = await db.select().from(executionAttempts);
-  assert.deepEqual(
-    attempts.map((attempt) => attempt.attemptNumber).sort(),
-    [1, 2],
-  );
+  assert.deepEqual(attempts.map((attempt) => attempt.attemptNumber).sort(), [
+    1,
+  ]);
 });

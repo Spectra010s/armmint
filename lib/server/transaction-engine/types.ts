@@ -4,6 +4,7 @@ export type TransactionRequest = {
   to: `0x${string}`;
   data: `0x${string}`;
   value?: bigint;
+  gas?: bigint;
   maxFeePerGas?: bigint;
   maxPriorityFeePerGas?: bigint;
 };
@@ -25,7 +26,14 @@ export type TransactionReceiptResult =
 export interface TransactionChainAdapter {
   simulate(request: TransactionRequest): Promise<void>;
   getPendingNonce(address: `0x${string}`): Promise<number>;
-  submit(request: PreparedTransaction): Promise<SubmittedTransaction>;
+  prepare?(request: TransactionRequest): Promise<TransactionRequest>;
+  getLatestNonce?(address: `0x${string}`): Promise<number>;
+  isKnown?(hash: `0x${string}`): Promise<boolean>;
+  // The signing boundary must await this durable hash checkpoint before broadcast.
+  submit(
+    request: PreparedTransaction,
+    onSigned?: (hash: `0x${string}`) => Promise<void>,
+  ): Promise<SubmittedTransaction>;
   waitForReceipt(hash: `0x${string}`): Promise<TransactionReceiptResult>;
 }
 

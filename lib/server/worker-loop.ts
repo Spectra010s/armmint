@@ -1,6 +1,9 @@
 import "server-only";
 
-import { claimNextDueMintJob, createWorkerId } from "@/lib/server/mint-job-claim";
+import {
+  claimNextDueMintJob,
+  createWorkerId,
+} from "@/lib/server/mint-job-claim";
 import { startExecutionAttempt } from "@/lib/server/mint-job-lifecycle";
 
 export type ClaimedMintJobHandler = (
@@ -9,7 +12,13 @@ export type ClaimedMintJobHandler = (
 ) => Promise<void>;
 
 export async function runWorkerTick(
-  handleClaimedJob: ClaimedMintJobHandler,
+  handleClaimedJob: ClaimedMintJobHandler = async (job, attemptId) => {
+    const { createProductionTransactionEngine } = await import(
+      "@/lib/server/transaction-engine/engine"
+    );
+    const engine = await createProductionTransactionEngine();
+    await engine.executeClaimedJob(job.id, attemptId);
+  },
   workerId = createWorkerId(),
   now = new Date(),
 ) {

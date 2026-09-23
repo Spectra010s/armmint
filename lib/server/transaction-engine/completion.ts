@@ -1,99 +1,109 @@
 import "server-only";
-
-import { and, eq, inArray } from "drizzle-orm";
-
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { executionAttempts, mintJobs, transactions } from "@/lib/db/schema";
+import { lockExecution } from "./guards";
 
 export async function completeConfirmedExecution(
   transactionId: string,
   now = new Date(),
 ) {
   return db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({
-        transactionState: transactions.state,
-        attemptId: executionAttempts.id,
-        jobId: executionAttempts.mintJobId,
-      })
+    const [ref] = await tx
+      .select()
       .from(transactions)
-      .innerJoin(
-        executionAttempts,
-        eq(transactions.executionAttemptId, executionAttempts.id),
-      )
-      .where(eq(transactions.id, transactionId))
-      .limit(1);
-
-    if (!row) return null;
-
-    if (row.transactionState !== "CONFIRMED") {
-      const [confirmed] = await tx
-        .update(transactions)
-        .set({ state: "CONFIRMED", updatedAt: now })
-        .where(
-          and(
-            eq(transactions.id, transactionId),
-            eq(transactions.state, "CONFIRMING"),
-          ),
-        )
-        .returning({ id: transactions.id });
-
-      if (!confirmed) return null;
+      .where(eq(transactions.id, transactionId));
+    if (!ref) return null;
+    const context = await lockExecution(tx, ref.executionAttemptId);
+    if (!context) {
+      const [attempt] = await tx
+        .select()
+        .from(executionAttempts)
+        .where(eq(executionAttempts.id, ref.executionAttemptId));
+      const [job] = attempt
+        ? await tx
+            .select()
+            .from(mintJobs)
+            .where(eq(mintJobs.id, attempt.mintJobId))
+        : [];
+      return ref.state === "CONFIRMED" &&
+        attempt?.state === "SUCCEEDED" &&
+        job?.state === "SUCCEEDED"
+        ? { transactionId, attemptId: attempt.id, jobId: job.id }
+        : null;
     }
-
-    const [attempt] = await tx
-      .update(executionAttempts)
-      .set({ state: "SUCCEEDED", updatedAt: now })
+    const [row] = await tx
+      .select()
+      .from(transactions)
+      .where(eq(transactions.id, transactionId))
+      .for("update");
+    if (
+      !["CREATED", "SUBMITTED", "CONFIRMING", "REPLACED", "CONFIRMED"].includes(
+        row.state,
+      )
+    )
+      return null;
+    await tx
+      .update(transactions)
+      .set({ state: "CONFIRMED", updatedAt: now })
+      .where(eq(transactions.id, transactionId));
+    await tx
+      .update(transactions)
+      .set({ state: "REPLACED", updatedAt: now })
       .where(
         and(
-          eq(executionAttempts.id, row.attemptId),
-          inArray(executionAttempts.state, ["RUNNING", "RETRYING", "SUCCEEDED"]),
+          eq(transactions.executionAttemptId, ref.executionAttemptId),
+          ne(transactions.id, transactionId),
+          inArray(transactions.state, ["CREATED", "SUBMITTED", "CONFIRMING"]),
         ),
-      )
-      .returning({ id: executionAttempts.id });
-
-    if (!attempt) return null;
-
-    const [job] = await tx
+      );
+    await tx
+      .update(executionAttempts)
+      .set({
+        state: "SUCCEEDED",
+        failureCode: null,
+        failureMessage: null,
+        updatedAt: now,
+      })
+      .where(eq(executionAttempts.id, context.attempt.id));
+    await tx
       .update(mintJobs)
       .set({ state: "SUCCEEDED", updatedAt: now })
-      .where(
-        and(
-          eq(mintJobs.id, row.jobId),
-          inArray(mintJobs.state, [
-            "CLAIMED",
-            "SIMULATING",
-            "SIGNING",
-            "SUBMITTING",
-            "SUBMITTED",
-            "RETRYING",
-            "CONFIRMING",
-            "SUCCEEDED",
-          ]),
-        ),
-      )
-      .returning({ id: mintJobs.id });
-
-    if (!job) return null;
-
-    return { transactionId, attemptId: row.attemptId, jobId: row.jobId };
+      .where(eq(mintJobs.id, context.job.id));
+    return {
+      transactionId,
+      attemptId: context.attempt.id,
+      jobId: context.job.id,
+    };
   });
 }
-
 export async function beginConfirmation(
   transactionId: string,
   now = new Date(),
 ) {
-  const [transaction] = await db
-    .update(transactions)
-    .set({ state: "CONFIRMING", updatedAt: now })
-    .where(
-      and(
-        eq(transactions.id, transactionId),
-        eq(transactions.state, "SUBMITTED"),
-      ),
-    )
-    .returning();
-
-  return transaction ?? null;
+  return db.transaction(async (tx) => {
+    const [ref] = await tx
+      .select()
+      .from(transactions)
+      .where(eq(transactions.id, transactionId));
+    if (!ref) return null;
+    const context = await lockExecution(tx, ref.executionAttemptId);
+    if (!context) return null;
+    const [row] = await tx
+      .update(transactions)
+      .set({ state: "CONFIRMING", updatedAt: now })
+      .where(
+        and(
+          eq(transactions.id, transactionId),
+          inArray(transactions.state, ["SUBMITTED", "CONFIRMING"]),
+        ),
+      )
+      .returning();
+    if (!row) return null;
+    await tx
+      .update(mintJobs)
+      .set({ state: "CONFIRMING", updatedAt: now })
+      .where(eq(mintJobs.id, context.job.id));
+    return row;
+  });
 }

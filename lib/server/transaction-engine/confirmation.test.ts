@@ -10,7 +10,7 @@ const hash =
 test("maps confirmed, reverted and pending receipts", async () => {
   const confirmed = {
     waitForReceipt: async () => ({ state: "CONFIRMED" as const, hash }),
-  } as TransactionChainAdapter;
+  } as Pick<TransactionChainAdapter, "waitForReceipt">;
   assert.deepEqual(await observeTransaction(confirmed, hash), {
     kind: "confirmed",
     hash,
@@ -22,7 +22,7 @@ test("maps confirmed, reverted and pending receipts", async () => {
       hash,
       reason: "execution reverted",
     }),
-  } as TransactionChainAdapter;
+  } as Pick<TransactionChainAdapter, "waitForReceipt">;
   assert.deepEqual(await observeTransaction(reverted, hash), {
     kind: "reverted",
     hash,
@@ -31,7 +31,7 @@ test("maps confirmed, reverted and pending receipts", async () => {
 
   const pending = {
     waitForReceipt: async () => ({ state: "PENDING" as const, hash }),
-  } as TransactionChainAdapter;
+  } as Pick<TransactionChainAdapter, "waitForReceipt">;
   assert.deepEqual(await observeTransaction(pending, hash), {
     kind: "pending",
     hash,
@@ -43,7 +43,7 @@ test("propagates receipt lookup failures instead of guessing transaction state",
     waitForReceipt: async () => {
       throw new Error("rpc unavailable");
     },
-  } as unknown as TransactionChainAdapter;
+  } as unknown as Pick<TransactionChainAdapter, "waitForReceipt">;
 
   await assert.rejects(observeTransaction(adapter, hash), /rpc unavailable/);
 });

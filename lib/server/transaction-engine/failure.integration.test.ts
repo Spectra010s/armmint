@@ -1,3 +1,8 @@
+import {
+  mintJobState,
+  executionAttemptState,
+  transactionState,
+} from "@/lib/db/schema";
 import assert from "node:assert/strict";
 import { after, before, beforeEach, mock, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
@@ -20,7 +25,16 @@ const { failExecution } = await import("./failure.ts");
 
 before(async () => {
   const schema = await pushSchema(
-    { users, wallets, mintJobs, executionAttempts, transactions },
+    {
+      mintJobState,
+      executionAttemptState,
+      transactionState,
+      users,
+      wallets,
+      mintJobs,
+      executionAttempts,
+      transactions,
+    },
     db,
   );
   await schema.apply();
@@ -85,9 +99,18 @@ test("revert persists an auditable terminal failure across all execution records
     "REVERTED",
   );
 
-  const [transaction] = await db.select().from(transactions).where(eq(transactions.id, "tx-1"));
-  const [attempt] = await db.select().from(executionAttempts).where(eq(executionAttempts.id, "attempt-1"));
-  const [job] = await db.select().from(mintJobs).where(eq(mintJobs.id, "job-1"));
+  const [transaction] = await db
+    .select()
+    .from(transactions)
+    .where(eq(transactions.id, "tx-1"));
+  const [attempt] = await db
+    .select()
+    .from(executionAttempts)
+    .where(eq(executionAttempts.id, "attempt-1"));
+  const [job] = await db
+    .select()
+    .from(mintJobs)
+    .where(eq(mintJobs.id, "job-1"));
 
   assert.equal(transaction?.state, "REVERTED");
   assert.equal(attempt?.state, "FAILED");
@@ -97,7 +120,10 @@ test("revert persists an auditable terminal failure across all execution records
 });
 
 test("failure cannot overwrite an already confirmed transaction", async () => {
-  await db.update(transactions).set({ state: "CONFIRMED" }).where(eq(transactions.id, "tx-1"));
+  await db
+    .update(transactions)
+    .set({ state: "CONFIRMED" })
+    .where(eq(transactions.id, "tx-1"));
 
   assert.equal(
     await failExecution(
@@ -127,8 +153,14 @@ test("failure cannot overwrite an already confirmed transaction", async () => {
 });
 
 test("late failure cannot overwrite a succeeded attempt and job", async () => {
-  await db.update(executionAttempts).set({ state: "SUCCEEDED" }).where(eq(executionAttempts.id, "attempt-1"));
-  await db.update(mintJobs).set({ state: "SUCCEEDED" }).where(eq(mintJobs.id, "job-1"));
+  await db
+    .update(executionAttempts)
+    .set({ state: "SUCCEEDED" })
+    .where(eq(executionAttempts.id, "attempt-1"));
+  await db
+    .update(mintJobs)
+    .set({ state: "SUCCEEDED" })
+    .where(eq(mintJobs.id, "job-1"));
 
   assert.equal(
     await failExecution(
@@ -139,8 +171,14 @@ test("late failure cannot overwrite a succeeded attempt and job", async () => {
     null,
   );
 
-  const [attempt] = await db.select().from(executionAttempts).where(eq(executionAttempts.id, "attempt-1"));
-  const [job] = await db.select().from(mintJobs).where(eq(mintJobs.id, "job-1"));
+  const [attempt] = await db
+    .select()
+    .from(executionAttempts)
+    .where(eq(executionAttempts.id, "attempt-1"));
+  const [job] = await db
+    .select()
+    .from(mintJobs)
+    .where(eq(mintJobs.id, "job-1"));
 
   assert.equal(attempt?.state, "SUCCEEDED");
   assert.equal(job?.state, "SUCCEEDED");
