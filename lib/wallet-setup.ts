@@ -58,7 +58,7 @@ export function buildWalletSetupPayload(
     }
   } catch (error) {
     if (error instanceof Error && error.message === WALLET_SETUP_REQUIRED_ERROR) throw error;
-    throw new Error(WALLET_SETUP_REQUIRED_ERROR);
+    throw new Error(WALLET_SETUP_REQUIRED_ERROR, { cause: error });
   }
 
   return {
