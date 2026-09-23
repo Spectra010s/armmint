@@ -1,3 +1,4 @@
+import { TelegramLinkPanel } from "@/components/telegram-link-panel";
 import { BurnerWalletWarning } from "@/components/burner-wallet-warning";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { getCurrentSession } from "@/lib/server/session";
@@ -25,6 +26,7 @@ export default async function Home() {
                 {session.user.email}
               </p>
             </div>
+            <TelegramLinkPanel />
             <BurnerWalletWarning />
           </div>
         ) : (

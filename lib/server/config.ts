@@ -15,7 +15,7 @@ const REQUIRED_ENV = [
 
 export type ServerConfig = {
   [K in (typeof REQUIRED_ENV)[number]]: string;
-};
+} & { BASE_CHAIN_ID: number };
 
 function requireNonEmpty(name: (typeof REQUIRED_ENV)[number]): string {
   const value = process.env[name]?.trim();
@@ -63,10 +63,16 @@ export function getWalletEncryptionKey(): Buffer {
 }
 
 export function getServerConfig(): ServerConfig {
-  const config = Object.fromEntries(
+  const required = Object.fromEntries(
     REQUIRED_ENV.map((name) => [name, requireNonEmpty(name)]),
-  ) as ServerConfig;
+  ) as { [K in (typeof REQUIRED_ENV)[number]]: string };
+  const config: ServerConfig = {
+    ...required,
+    BASE_CHAIN_ID: Number(process.env.BASE_CHAIN_ID ?? "8453"),
+  };
 
+  if (![8453, 84532].includes(config.BASE_CHAIN_ID))
+    throw new Error("BASE_CHAIN_ID must be 8453 or 84532");
   validateUrl("DATABASE_URL", config.DATABASE_URL);
   validateUrl("BETTER_AUTH_URL", config.BETTER_AUTH_URL);
   validateUrl("BASE_RPC_URL", config.BASE_RPC_URL);

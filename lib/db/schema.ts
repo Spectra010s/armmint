@@ -337,3 +337,13 @@ export const transactions = pgTable(
     ),
   ],
 );
+
+// One durable conversation per linked account. Only validated public mint inputs
+// are stored; raw Telegram messages and signing secrets never enter this table.
+export const telegramConversations = pgTable("telegram_conversations", {
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  draft: jsonb("draft").$type<import("../server/telegram-types").MintDraft>(),
+  lastUpdateId: bigint("last_update_id", { mode: "number" }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
