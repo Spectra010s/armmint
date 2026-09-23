@@ -8,13 +8,15 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json pnpm-lock.yaml ./
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+# Source is not present yet, so defer lifecycle scripts such as `next typegen`
+# until the complete application has been copied into the builder stage.
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --ignore-scripts
 
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm build
+RUN pnpm postinstall && pnpm build
 
 # Web runtime: minimal standalone Next.js server.
 FROM node:24.19.0-alpine AS web
