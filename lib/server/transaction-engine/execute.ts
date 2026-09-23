@@ -11,8 +11,10 @@ import {
   decodeRequest,
   findJobTransactions,
   markTransactionSubmitted,
+  NONCE_CONSUMED_GRACE_MS,
   recordNonceConflict,
   releaseExecutionLease,
+  renewExecutionLease,
   reserveReplacementTransaction,
   reserveTransaction,
   setExecutionStage,
@@ -36,6 +38,17 @@ export async function executeTransaction(
     input.executionAttemptId,
   );
   if (!lease) return { status: "inactive" as const };
+  // Heartbeat before every long RPC so a second worker can never satisfy the
+  // claim query's both-leases-expired condition mid-execution. Losing the
+  // lease aborts before any signing side effect (checkpoint enforces it too).
+  const renew = async () => {
+    const held = await renewExecutionLease(input.mintJobId, lease.id);
+    if (!held)
+      throw new TransactionEngineError(
+        "LEASE_LOST",
+        "Execution is no longer active",
+      );
+  };
   const stage = (state: Parameters<typeof setExecutionStage>[2]) =>
     setExecutionStage(input.mintJobId, lease.id, state);
   try {
@@ -45,6 +58,7 @@ export async function executeTransaction(
     // A miner may include the original while the replacement is in flight.
     for (const row of rows) {
       if (!row.hash || ["REVERTED", "DROPPED"].includes(row.state)) continue;
+      await renew();
       const receipt = await adapter.waitForReceipt(row.hash as `0x${string}`);
       if (receipt.state === "CONFIRMED") {
         if (!(await completeConfirmedExecution(row.id)))
@@ -77,11 +91,38 @@ export async function executeTransaction(
     if (
       transaction &&
       adapter.getLatestNonce &&
-      (await adapter.getLatestNonce(input.request.from)) > transaction.nonce
+      (await (async () => {
+        await renew();
+        return adapter.getLatestNonce!(input.request.from);
+      })()) > transaction.nonce
     ) {
-      // Receipts can lag the latest nonce. Do not guess a dropped/failed state or
-      // mint with a new nonce; stop signing and let subsequent receipt polls resolve it.
+      // Receipts can lag the latest nonce. Nonces are sequential, so latest >
+      // reserved proves the reservation was consumed by a different
+      // transaction — but only after a grace period. Before that, stop signing
+      // and let subsequent receipt polls resolve it.
       await recordNonceConflict(input.executionAttemptId);
+      const age =
+        Date.now() -
+        (transaction.submittedAt ?? transaction.createdAt).getTime();
+      if (age > NONCE_CONSUMED_GRACE_MS) {
+        // Proven unmineable: the network already mined this nonce without our
+        // hash. Drop the reservation (hash retained, nonce stays occupied so
+        // future jobs skip it) and fail closed. No duplicate mint is possible:
+        // our hash can never be included under a consumed nonce.
+        await failExecution(
+          transaction.id,
+          {
+            code: "NONCE_CONSUMED",
+            message:
+              "Account nonce advanced past the reserved nonce; reserved transaction can never mine",
+          },
+          "DROPPED",
+        );
+        return {
+          status: "dropped" as const,
+          transactionId: transaction.id,
+        };
+      }
       return {
         status: "nonce_consumed" as const,
         transactionId: transaction.id,
@@ -93,7 +134,10 @@ export async function executeTransaction(
       transaction?.hash &&
       transaction.state === "CREATED" &&
       adapter.isKnown &&
-      (await adapter.isKnown(transaction.hash as `0x${string}`))
+      (await (async () => {
+        await renew();
+        return adapter.isKnown!(transaction!.hash as `0x${string}`);
+      })())
     ) {
       await markTransactionSubmitted(transaction.id, transaction.hash);
       rows = await findJobTransactions(input.mintJobId);
@@ -122,6 +166,7 @@ export async function executeTransaction(
         policy.gasBumpBps,
       );
       await stage("SIMULATING");
+      await renew();
       await adapter.simulate(request);
       transaction = await reserveReplacementTransaction(
         transaction.id,
@@ -135,10 +180,12 @@ export async function executeTransaction(
       return { status: "retry_exhausted" as const };
     } else if (!transaction) {
       await stage("SIMULATING");
+      await renew();
       const request = adapter.prepare
         ? await adapter.prepare(input.request)
         : input.request;
       await adapter.simulate(request);
+      await renew();
       const pendingNonce = await adapter.getPendingNonce(request.from);
       transaction = await reserveTransaction(
         input.executionAttemptId,
@@ -153,8 +200,10 @@ export async function executeTransaction(
     // Recovery of an unsigned or ambiguously broadcast transaction uses exactly
     // its persisted request. Never let a refreshed job or fee quote change it.
     await stage("SIMULATING");
+    await renew();
     await adapter.simulate(request);
     await stage("SIGNING");
+    await renew();
     const submitted = await adapter.submit(request, async (hash) => {
       await stage("SUBMITTING");
       if (!(await checkpointSignedHash(transaction!.id, hash, lease.id)))
@@ -173,6 +222,7 @@ export async function executeTransaction(
       submitted.hash,
     );
     if (!persisted) return { status: "inactive" as const };
+    await renew();
     const receipt = await adapter.waitForReceipt(submitted.hash);
     if (receipt.state === "CONFIRMED")
       await completeConfirmedExecution(transaction.id);

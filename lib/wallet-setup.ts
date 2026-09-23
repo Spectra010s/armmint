@@ -1,3 +1,6 @@
+import { isAddress, zeroAddress } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+
 export type WalletSetupPayload = {
   address: string;
   privateKey: string;
@@ -34,8 +37,28 @@ export function buildWalletSetupPayload(
 
   const address = input.address.trim();
 
-  if (!address || !input.privateKey) {
+  if (
+    !address ||
+    !input.privateKey ||
+    address.length > 64 ||
+    input.privateKey.length > 128 ||
+    !isAddress(address) ||
+    address.toLowerCase() === zeroAddress ||
+    !/^0x[0-9a-fA-F]{64}$/.test(input.privateKey)
+  ) {
     throw new Error(WALLET_SETUP_REQUIRED_ERROR);
+  }
+
+  try {
+    if (
+      privateKeyToAccount(input.privateKey as `0x${string}`).address.toLowerCase() !==
+      address.toLowerCase()
+    ) {
+      throw new Error(WALLET_SETUP_REQUIRED_ERROR);
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message === WALLET_SETUP_REQUIRED_ERROR) throw error;
+    throw new Error(WALLET_SETUP_REQUIRED_ERROR, { cause: error });
   }
 
   return {

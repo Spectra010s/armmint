@@ -1,6 +1,9 @@
 import "server-only";
 
-import { getWalletEncryptionKey } from "@/lib/server/config";
+import {
+  getPreviousWalletEncryptionKey,
+  getWalletEncryptionKey,
+} from "@/lib/server/config";
 import {
   decryptPrivateKey,
   encryptPrivateKey,
@@ -19,30 +22,39 @@ export function encryptWalletPrivateKey(
   }
 }
 
+function decryptWithRotationFallback(encrypted: EncryptedPrivateKey): string {
+  const encryptionKey = getWalletEncryptionKey();
+  try {
+    return decryptPrivateKey(encrypted, encryptionKey);
+  } catch (error) {
+    const previousKey = getPreviousWalletEncryptionKey();
+    if (
+      previousKey &&
+      error instanceof Error &&
+      error.message === "Encrypted wallet key authentication failed"
+    ) {
+      try {
+        return decryptPrivateKey(encrypted, previousKey);
+      } finally {
+        previousKey.fill(0);
+      }
+    }
+    throw error;
+  } finally {
+    encryptionKey.fill(0);
+  }
+}
+
 export function withDecryptedWalletPrivateKey<T>(
   encrypted: EncryptedPrivateKey,
   operation: (privateKey: string) => T,
 ): T {
-  const encryptionKey = getWalletEncryptionKey();
-
-  try {
-    const privateKey = decryptPrivateKey(encrypted, encryptionKey);
-    return operation(privateKey);
-  } finally {
-    encryptionKey.fill(0);
-  }
+  return operation(decryptWithRotationFallback(encrypted));
 }
 
 export async function withDecryptedWalletPrivateKeyAsync<T>(
   encrypted: EncryptedPrivateKey,
   operation: (privateKey: string) => Promise<T>,
 ): Promise<T> {
-  const encryptionKey = getWalletEncryptionKey();
-
-  try {
-    const privateKey = decryptPrivateKey(encrypted, encryptionKey);
-    return await operation(privateKey);
-  } finally {
-    encryptionKey.fill(0);
-  }
+  return operation(decryptWithRotationFallback(encrypted));
 }

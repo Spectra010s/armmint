@@ -41,6 +41,7 @@ const configMock = mock.module("@/lib/server/config", {
       BASE_CHAIN_ID: 8453,
     }),
     getWalletEncryptionKey: () => Buffer.alloc(32, 9),
+    getPreviousWalletEncryptionKey: () => null,
   },
 });
 let requestHeaders = new Headers();

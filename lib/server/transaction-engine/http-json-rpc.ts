@@ -1,6 +1,10 @@
 import type { JsonRpcTransport } from "./json-rpc-client";
 
-export function createHttpJsonRpcTransport(url: string, fetcher: typeof fetch = fetch): JsonRpcTransport {
+export function createHttpJsonRpcTransport(
+  url: string,
+  fetcher: typeof fetch = fetch,
+  timeoutMs = 15000,
+): JsonRpcTransport {
   let requestId = 0;
 
   return {
@@ -14,6 +18,7 @@ export function createHttpJsonRpcTransport(url: string, fetcher: typeof fetch = 
           method,
           params,
         }),
+        signal: AbortSignal.timeout(timeoutMs),
       });
 
       if (!response.ok) {

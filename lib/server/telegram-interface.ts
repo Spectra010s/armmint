@@ -319,7 +319,8 @@ export async function handleTelegramInput(
       );
     }
     if (/^jobs:\d{1,6}$/.test(action)) {
-      const page = Number(action.split(":")[1]);
+      const requested = Number(action.split(":")[1]);
+      const page = Math.min(requested, 200);
       const jobs = await listMintJobs(account.userId, page, tx);
       const rows = jobs
         .slice(0, 5)

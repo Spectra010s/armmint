@@ -80,7 +80,7 @@ Represents one prepared or submitted on-chain transaction associated with an Exe
 - An ExecutionAttempt belongs to exactly one MintJob.
 - A Transaction belongs to exactly one ExecutionAttempt.
 - Terminal entity states cannot transition back into active states.
-- Cancellation is only allowed while a job is `SCHEDULED` or `CLAIMED`; once simulation/signing begins the worker owns the lifecycle and must reconcile it instead of accepting a user cancellation.
+- Cancellation is only allowed while a job is `SCHEDULED`; once claimed, cancellation is deliberately unavailable and the worker owns the lifecycle and must reconcile it instead of accepting a user cancellation.
 - Worker retries do not create a new logical MintJob.
 - A successful logical execution prevents another successful execution for the same MintJob identity.
 
@@ -174,6 +174,8 @@ Server configuration is read through `lib/server/config.ts`, which is guarded by
 ### Private-key boundary
 
 The authenticated sensitive setup surface may accept a burner-wallet private key only over the server boundary. The plaintext value must be passed directly to the encryption service, must never be persisted or returned to the client, and must be released from application references after the operation completes. Workers may decrypt it only immediately before signing. Telegram handlers must never accept private keys as ordinary chat input.
+
+Wallet ciphertext uses AES-256-GCM with a fresh 12-byte IV per encryption. V1 uses a single server-wide data key (`ARMINT_ENCRYPTION_KEY`) rather than per-user KEKs: this is a deliberate scope decision, not an overlooked vulnerability — per-user envelope encryption (KMS/HSM-backed KEKs, per-row AAD binding) remains a defense-in-depth hardening opportunity, but the current design has no remotely exploitable key-exposure path (digest-free storage, generic auth-failure errors, key zeroing, decrypt-minimizing signing boundary, hash-only durability). What V1 must have is a working rotation path, which exists: set `ARMINT_PREVIOUS_ENCRYPTION_KEY` to the old key, set `ARMINT_ENCRYPTION_KEY` to the new key (decryption falls back to the previous key on authentication failure), run `scripts/rotate-wallet-keys.ts` to re-encrypt every row, verify, then unset the previous key.
 
 ### Logging and errors
 

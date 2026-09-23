@@ -621,6 +621,47 @@ test("ambiguous broadcast exhaustion stops signing but still observes eventual s
   assert.equal(decryptions, 3);
 });
 
+test("proven-consumed nonce drops the reservation instead of stalling", async () => {
+  await tick();
+  assert.equal((await state()).jobs[0].state, "CONFIRMING");
+  assert.equal(broadcasts.length, 1);
+
+  // External activity mines the reserved nonce with a different transaction.
+  latestNonce = 8;
+  pendingNonce = 9;
+  const stale = new Date(Date.now() - 60 * 60 * 1000);
+  await db
+    .update(transactions)
+    .set({ submittedAt: stale, createdAt: stale });
+
+  await recover();
+  const s = await state();
+  assert.equal(s.jobs[0].state, "FAILED");
+  assert.equal(s.attempts[0].failureCode, "NONCE_CONSUMED");
+  assert.equal(s.txs[0].state, "DROPPED");
+  // No second mint was ever broadcast.
+  assert.equal(broadcasts.length, 1);
+
+  // Recovery stays terminal and never re-signs.
+  await recover();
+  assert.equal((await state()).jobs[0].state, "FAILED");
+  assert.equal(broadcasts.length, 1);
+});
+
+test("recent nonce advance waits for receipts instead of dropping", async () => {
+  await tick();
+  latestNonce = 8;
+  pendingNonce = 9;
+  await recover(replacementPolicy);
+  const s = await state();
+  // Within the grace period the job keeps monitoring, not failing.
+  assert.equal(s.jobs[0].state, "CONFIRMING");
+  assert.equal(broadcasts.length, 1);
+  receipts.set(keccak256(broadcasts[0]), "success");
+  await recover();
+  assert.equal((await state()).jobs[0].state, "SUCCEEDED");
+});
+
 test("mismatched job and attempt do not fail a different job", async () => {
   await db.update(mintJobs).set({ state: "CLAIMED" });
   const attempt = await startExecutionAttempt("job");

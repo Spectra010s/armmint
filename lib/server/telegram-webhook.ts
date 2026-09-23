@@ -74,6 +74,17 @@ export function parseTelegramInput(
       Buffer.byteLength(callback.data) > 64)
   )
     return null;
+  if (
+    !callback &&
+    typeof message.text === "string" &&
+    message.text.length > 8192
+  )
+    return null;
+  if (
+    typeof from.username === "string" &&
+    from.username.length > 64
+  )
+    return null;
   return {
     updateId: update.update_id as number,
     chatId: from.id,
