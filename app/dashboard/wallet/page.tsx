@@ -1,0 +1,7 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { BurnerWalletWarning } from "@/components/burner-wallet-warning";
+import { getUserWallet } from "@/lib/server/mint-job-service";
+import { getCurrentSession } from "@/lib/server/session";
+
+export default async function WalletPage(){const session=await getCurrentSession();if(!session?.user)redirect("/");const wallet=await getUserWallet(session.user.id);return <main className="min-h-screen bg-neutral-950 text-white"><div className="mx-auto max-w-2xl px-5 py-8"><Link href="/dashboard" className="text-sm text-neutral-500 hover:text-white">← Dashboard</Link><p className="mt-8 text-xs font-semibold uppercase tracking-[.2em] text-emerald-400">Security boundary</p><h1 className="mt-2 text-3xl font-semibold">Burner wallet</h1><p className="mt-2 max-w-xl text-sm leading-6 text-neutral-400">ArmMint only supports a dedicated burner wallet. Never use a primary wallet or one holding valuable assets.</p>{wallet?<section className="mt-8 rounded-2xl border border-emerald-400/20 bg-emerald-400/[.05] p-6"><p className="text-xs font-semibold uppercase tracking-wider text-emerald-300">Connected</p><p className="mt-3 break-all font-mono text-sm">{wallet.address}</p><p className="mt-4 text-sm leading-6 text-neutral-400">The private key is encrypted server-side and is never displayed by ArmMint.</p></section>:<div className="mt-8"><BurnerWalletWarning /></div>}</div></main>}
