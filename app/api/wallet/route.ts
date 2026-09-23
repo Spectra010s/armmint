@@ -14,7 +14,7 @@ type WalletSetupBody = {
   burnerWalletAcknowledged?: unknown;
 };
 
-export async function POST(request: NextRequest) {
+async function saveWallet(request: NextRequest) {
   const user = await requireCurrentUser();
 
   let body: WalletSetupBody;
@@ -23,6 +23,9 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
+
+  if (!body || typeof body !== "object" || Array.isArray(body))
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
   if (body.burnerWalletAcknowledged !== true) {
     return NextResponse.json(
@@ -73,4 +76,25 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ wallet }, { status: 201 });
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    return await saveWallet(request);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error && error.message === "Unauthorized"
+            ? "Unauthorized"
+            : "Unable to complete wallet setup. Please try again.",
+      },
+      {
+        status:
+          error instanceof Error && error.message === "Unauthorized"
+            ? 401
+            : 503,
+      },
+    );
+  }
 }

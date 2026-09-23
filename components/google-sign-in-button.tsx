@@ -12,13 +12,17 @@ export function GoogleSignInButton() {
     setIsPending(true);
     setError(null);
 
-    const { error: signInError } = await authClient.signIn.social({
-      provider: "google",
-      callbackURL: "/",
-    });
-
-    if (signInError) {
-      setError(signInError.message ?? "Unable to sign in with Google");
+    try {
+      const { error: signInError } = await authClient.signIn.social({
+        provider: "google",
+        callbackURL: "/",
+        errorCallbackURL: "/auth/error",
+      });
+      if (signInError)
+        setError("Unable to sign in with Google. Please try again.");
+    } catch {
+      setError("Unable to sign in with Google. Please try again.");
+    } finally {
       setIsPending(false);
     }
   }

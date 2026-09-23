@@ -18,6 +18,20 @@ export const auth = betterAuth({
     schema,
     usePlural: true,
   }),
+  trustedOrigins: [new URL(config.BETTER_AUTH_URL).origin],
+  account: {
+    // ArmMint has one login provider; do not implicitly merge separate identities.
+    accountLinking: { enabled: false },
+    encryptOAuthTokens: true,
+    storeStateStrategy: "database",
+  },
+  session: { cookieCache: { enabled: false } },
+  // Provider/adapter exceptions may contain OAuth codes or tokens.
+  logger: {
+    level: "error",
+    log: () => console.error("Authentication request failed"),
+  },
+  onAPIError: { errorURL: "/auth/error" },
   emailAndPassword: {
     enabled: false,
   },
