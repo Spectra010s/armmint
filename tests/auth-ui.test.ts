@@ -90,7 +90,7 @@ test("Google button uses the actual social flow and recovers from transport/prov
   assert.match(screen.getByRole("alert").textContent!, /Please try again/);
   assert.deepEqual(signInOptions, {
     provider: "google",
-    callbackURL: "/",
+    callbackURL: "/dashboard",
     errorCallbackURL: "/auth/error",
   });
   signInFails = false;
