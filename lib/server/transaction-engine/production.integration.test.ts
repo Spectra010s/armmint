@@ -26,6 +26,7 @@ import {
   mintJobs,
   executionAttempts,
   transactions,
+  telegramAccounts, telegramConversations, telegramLinkTokens,
 } from "@/lib/db/schema";
 import * as keyService from "../wallet-key-service.ts";
 
@@ -214,6 +215,7 @@ before(async () => {
       mintJobs,
       executionAttempts,
       transactions,
+      telegramAccounts, telegramConversations, telegramLinkTokens,
     },
     db,
   );
@@ -223,6 +225,9 @@ beforeEach(async () => {
   await db.delete(transactions);
   await db.delete(executionAttempts);
   await db.delete(mintJobs);
+  await db.delete(telegramConversations);
+  await db.delete(telegramAccounts);
+  await db.delete(telegramLinkTokens);
   await db.delete(wallets);
   await db.delete(users);
   events.length = 0;
@@ -660,4 +665,35 @@ test("default worker invokes the production HTTP/viem engine", async () => {
     if (previous === undefined) delete process.env.BASE_RPC_URL;
     else process.env.BASE_RPC_URL = previous;
   }
+});
+
+
+test("Telegram confirmation flows through production worker signing and status", async () => {
+  const { handleTelegramInput } = await import("../telegram-interface.ts");
+  await db.delete(mintJobs);
+  await db.insert(telegramAccounts).values({ id: "telegram-user", userId: "user", telegramUserId: 101n });
+  let updateId = 0;
+  const config = { appUrl: "https://armmint.example", chainId: 84532 };
+  const send = (text: string) => handleTelegramInput({ updateId: ++updateId, chatId: 101, identity: { id: 101n, username: null }, text }, config);
+  const click = (response: NonNullable<Awaited<ReturnType<typeof send>>>, label: string) => {
+    const b = response.reply_markup!.inline_keyboard.flat().find(candidate => candidate.text === label)!;
+    assert.ok("callback_data" in b);
+    return handleTelegramInput({ updateId: ++updateId, chatId: 101, identity: { id: 101n, username: null }, callback: { id: String(updateId), data: b.callback_data } }, config);
+  };
+  await send("/mint");
+  await click((await send(target))!, "mint(uint256)");
+  await send("2");
+  const review = await click((await send("0"))!, "Mint now");
+  await click(review!, "Confirm mint");
+  const [job] = await db.select().from(mintJobs);
+  assert.equal(job.calldata, calldata);
+  assert.equal(decryptions, 0);
+  immediateReceipt = "success";
+  await tick();
+  assert.equal(decryptions, 1);
+  assert.equal(broadcasts.length, 1);
+  assert.match((await send(`/status ${job.id}`))!.text, /transaction confirmed/);
+  await tick();
+  assert.equal(decryptions, 1);
+  assert.equal(broadcasts.length, 1);
 });

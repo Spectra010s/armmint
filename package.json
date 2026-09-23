@@ -15,6 +15,7 @@
     "db:check": "drizzle-kit check",
     "postinstall": "next typegen",
     "typecheck": "next typegen && tsc --noEmit",
+    "telegram:setup": "node --env-file-if-exists=.env --import ./lib/server/register.ts scripts/telegram-setup.ts",
     "worker": "node --env-file-if-exists=.env --import ./lib/server/register.ts scripts/worker.ts"
   },
   "dependencies": {
