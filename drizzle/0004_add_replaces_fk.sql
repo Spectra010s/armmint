@@ -1,1 +1,0 @@
-ALTER TABLE "transactions" ADD CONSTRAINT "transactions_replaces_transaction_id_transactions_id_fk" FOREIGN KEY ("replaces_transaction_id") REFERENCES "public"."transactions"("id") ON DELETE restrict ON UPDATE no action;
