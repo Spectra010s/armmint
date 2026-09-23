@@ -34,6 +34,7 @@ const configMock = mock.module("@/lib/server/config", {
     getServerConfig: () => ({ BETTER_AUTH_URL: "https://armmint.test" }),
     getWalletEncryptionKey: () =>
       Buffer.from(process.env.ARMINT_ENCRYPTION_KEY!, "base64"),
+    getPreviousWalletEncryptionKey: () => null,
   },
 });
 
