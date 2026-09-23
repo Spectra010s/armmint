@@ -338,6 +338,30 @@ test("authenticated linking rejects cross-origin and supplied identities then au
   assert.match(stranger!.text, /Sign in to ArmMint/);
 });
 
+test("link issuance accepts empty POST streams but rejects any actual payload", async () => {
+  await login();
+  for (const contentLength of [undefined, "0"]) {
+    const request = new NextRequest(`${origin}/api/telegram/link`, {
+      method: "POST",
+      headers: { origin, ...(contentLength ? { "content-length": contentLength } : {}) },
+      body: "",
+    });
+    assert.notEqual(request.body, null);
+    assert.equal((await linkPOST(request)).status, 200);
+  }
+  const rowsBefore = await db.select().from(telegramLinkTokens);
+  for (const payload of [" ", "{}", '{"userId":"another-user"}']) {
+    const request = new NextRequest(`${origin}/api/telegram/link`, {
+      method: "POST",
+      // A misleading length must not bypass the byte check.
+      headers: { origin, "content-length": "0" },
+      body: payload,
+    });
+    assert.equal((await linkPOST(request)).status, 400);
+  }
+  assert.deepEqual(await db.select().from(telegramLinkTokens), rowsBefore);
+});
+
 test("parallel authenticated issuance leaves a single usable credential", async () => {
   const session = await login();
   const issued = await Promise.all([

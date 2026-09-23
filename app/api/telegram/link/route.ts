@@ -36,6 +36,24 @@ export async function GET() {
     return failure(error);
   }
 }
+async function hasPayload(request: Request): Promise<boolean> {
+  if (!request.body) return false;
+  const reader = request.body.getReader();
+  try {
+    // Node/Next may supply a stream even for a zero-byte POST. Inspect bytes,
+    // not stream presence or Content-Length, and never buffer a supplied body.
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return false;
+      if (value.byteLength > 0) {
+        void reader.cancel().catch(() => {});
+        return true;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
 export async function POST(request: NextRequest) {
   try {
     const user = await requireCurrentUser();
@@ -49,7 +67,7 @@ export async function POST(request: NextRequest) {
         { error: "Invalid request origin" },
         { status: 403, headers },
       );
-    if (request.body !== null)
+    if (await hasPayload(request))
       return NextResponse.json(
         { error: "This request must not contain a body" },
         { status: 400, headers },
