@@ -38,7 +38,6 @@ const configMock = mock.module("@/lib/server/config", {
       TELEGRAM_BOT_USERNAME: "ArmMintBot",
       TELEGRAM_BOT_TOKEN: "bot-token",
       TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-      BASE_CHAIN_ID: 8453,
     }),
     getWalletEncryptionKey: () => Buffer.alloc(32, 9),
     getPreviousWalletEncryptionKey: () => null,
@@ -323,7 +322,7 @@ test("authenticated linking rejects cross-origin and supplied identities then au
       identity: { id: 101n, username: null },
       text: "/jobs",
     },
-    { appUrl: origin, chainId: 8453 },
+    { appUrl: origin },
   );
   assert.match(reply!.text, /No mint jobs/);
   const stranger = await handleTelegramInput(
@@ -333,7 +332,7 @@ test("authenticated linking rejects cross-origin and supplied identities then au
       identity: { id: 202n, username: null },
       text: "/jobs",
     },
-    { appUrl: origin, chainId: 8453 },
+    { appUrl: origin },
   );
   assert.match(stranger!.text, /Sign in to ArmMint/);
 });
@@ -412,7 +411,7 @@ test("notification failure preserves linking and a repeated start reports existi
       identity: { id: 101n, username: null },
       text: `/start ${token}`,
     },
-    { appUrl: origin, chainId: 8453 },
+    { appUrl: origin },
   );
   assert.match(replay!.text, /already linked/);
   assert.equal(messages.join().includes("private-"), false);
@@ -469,4 +468,30 @@ test("link-storage failures are sanitized and never return credentials", async (
   } finally {
     failing.mock.restore();
   }
+});
+
+test("authenticated web mint API persists Arc/Ink, validates networks, scopes ownership and deduplicates retries", async () => {
+  const { POST } = await import("../app/api/mint-jobs/route.ts");
+  const { randomUUID } = await import("node:crypto");
+  const { getMintJob, cancelMintJob } = await import("./server/mint-job-service.ts");
+  const request = (body: unknown, from = origin) => new Request(`${origin}/api/mint-jobs`, { method: "POST", headers: { origin: from }, body: JSON.stringify(body) });
+  assert.equal((await POST(request({}))).status, 401);
+  const session = await login();
+  await db.insert(wallets).values({ id: "web-wallet", userId: session.user.id, address: `0x${"11".repeat(20)}`, encryptedPrivateKey: "cipher", encryptionIv: "iv", encryptionAuthTag: "tag", encryptionKeyVersion: 1 });
+  for (const chainId of [5042002, 763373, 5042, 57073]) {
+    const input = { chainId, contractAddress: `0x${"22".repeat(20)}`, calldata: "0x12345678", valueWei: "0", scheduledFor: new Date().toISOString(), idempotencyKey: randomUUID() };
+    assert.equal((await POST(request(input, "https://evil.test"))).status, 403);
+    for (const network of [0, 1, 8453, "763373"]) assert.equal((await POST(request({ ...input, chainId: network }))).status, 400);
+    assert.equal((await POST(request({ ...input, userId: "someone-else" }))).status, 400);
+    const response = await POST(request(input));
+    assert.equal(response.status, 201);
+    const result = await response.json();
+    assert.equal(result.chainId, chainId);
+    assert.equal((await (await POST(request(input))).json()).id, result.id);
+    assert.equal((await POST(request({ ...input, chainId: chainId === 5042002 ? 763373 : 5042002 }))).status, 400);
+    assert.equal((await getMintJob(session.user.id, result.id))!.job.chainId, chainId);
+    assert.equal(await getMintJob("other-user", result.id), null);
+    assert.equal(await cancelMintJob("other-user", result.id), "not_found");
+  }
+  assert.equal((await db.select().from(mintJobs)).length, 4);
 });

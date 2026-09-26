@@ -7,7 +7,6 @@ const config = mock.module("@/lib/server/config", {
       TELEGRAM_WEBHOOK_SECRET: "secret",
       TELEGRAM_BOT_TOKEN: "credential-not-for-logs",
       BETTER_AUTH_URL: "https://armmint.example",
-      BASE_CHAIN_ID: 8453,
     }),
   },
 });

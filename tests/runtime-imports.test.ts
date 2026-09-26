@@ -5,7 +5,7 @@ import { test } from "node:test";
 // This test runs in its own Node test process, without mocked runtime services.
 test("server modules and every API route import without runtime configuration", async () => {
   for (const name of Object.keys(process.env)) {
-    if (/^(DATABASE_|BETTER_AUTH_|GOOGLE_|TELEGRAM_|BASE_|ARMINT_)/.test(name))
+    if (/^(DATABASE_|BETTER_AUTH_|GOOGLE_|TELEGRAM_|BASE_|ARC_|INK_|LEGACY_|ARMINT_)/.test(name))
       delete process.env[name];
   }
   process.env = { ...process.env, NODE_ENV: "production" };

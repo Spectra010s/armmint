@@ -31,7 +31,6 @@ export async function POST(request: NextRequest) {
   try {
     const reply = await handleTelegramInput(input, {
       appUrl: config.BETTER_AUTH_URL,
-      chainId: config.BASE_CHAIN_ID,
     });
     // State is committed before notification. Delivery failures must not rerun a
     // confirmed mint; /start, /jobs and Resume recover the current durable state.

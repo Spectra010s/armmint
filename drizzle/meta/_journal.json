@@ -36,6 +36,13 @@
       "when": 1790188487479,
       "tag": "0004_add_replaces_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790434445815,
+      "tag": "0005_multichain_transaction_identity",
+      "breakpoints": true
     }
   ]
 }

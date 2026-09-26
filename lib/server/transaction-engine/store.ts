@@ -100,6 +100,8 @@ export async function reserveTransaction(
   now = new Date(),
   request?: PreparedTransaction,
 ) {
+  if (request && request.chainId !== chainId)
+    throw new TransactionEngineError("INVALID_EXECUTION", "Signing request network does not match reservation");
   if (!Number.isSafeInteger(pendingNonce) || pendingNonce < 0)
     throw new TransactionEngineError("NONCE_CONFLICT", "Invalid pending nonce");
   return db.transaction(async (tx) => {
@@ -135,7 +137,11 @@ export async function reserveTransaction(
       .where(eq(executionAttempts.mintJobId, context.job.id))
       .orderBy(desc(transactions.createdAt), desc(transactions.id))
       .limit(1);
-    if (existing[0]) return existing[0].transaction;
+    if (existing[0]) {
+      if (existing[0].transaction.chainId !== chainId)
+        throw new TransactionEngineError("INVALID_EXECUTION", "Persisted transaction network does not match job");
+      return existing[0].transaction;
+    }
     const reserved = await tx
       .select({ nonce: transactions.nonce })
       .from(transactions)
@@ -337,6 +343,8 @@ export async function reserveReplacementTransaction(
         "Only a signed transaction can be replaced",
       );
     if (
+      context.job.chainId !== chainId ||
+      (request !== undefined && (request.chainId !== chainId || request.nonce !== nonce)) ||
       original.executionAttemptId !== attemptId ||
       original.chainId !== chainId ||
       ["CONFIRMED", "REVERTED"].includes(original.state)

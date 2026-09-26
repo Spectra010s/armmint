@@ -1,3 +1,4 @@
+import { MINT_NETWORKS, isMintNetwork, networkName, nativeSymbol, transactionExplorerUrl } from "@/lib/networks";
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -45,8 +46,8 @@ const menu = [
   [button("New mint", "new"), button("My jobs", "jobs:0")],
   [button("Wallet setup", "wallet"), button("Help", "help")],
 ];
-const network = (chainId: number) =>
-  chainId === 8453 ? "Base" : "Base Sepolia";
+const network = (chainId?: number) => chainId === undefined ? "Choose network" : networkName(chainId);
+const currency = (chainId?: number) => chainId === undefined ? "native currency" : nativeSymbol(chainId);
 const draftAction = (draft: MintDraft, action: string) =>
   `d:${draft.id}:${draft.revision}:${action}`;
 const dateText = (date: string | Date) =>
@@ -63,6 +64,11 @@ export function draftPrompt(draft: MintDraft): TelegramReply {
   const rows = controls(draft);
   const label = `New mint · ${network(draft.chainId)}\n`;
   switch (draft.step) {
+    case "network":
+      return reply("Choose the mint network. Use a testnet for testing. Your contract and funds must be on this network.", [
+        ...MINT_NETWORKS.map(({ chain }) => [button(`${chain.name}${chain.testnet ? " (testnet)" : " (mainnet)"}`, draftAction(draft, `network-${chain.id}`))]),
+        ...rows,
+      ]);
     case "contract":
       return reply(
         `${label}Send the NFT contract address (0x…).\nOnly use a contract you trust. Never send a private key or seed phrase.`,
@@ -90,7 +96,7 @@ export function draftPrompt(draft: MintDraft): TelegramReply {
       );
     case "value":
       return reply(
-        `${label}Send the TOTAL ETH to send to the contract, excluding gas (for example 0.02). For a free mint, send 0. This is the total for all NFTs, not the price per NFT.`,
+        `${label}Send the TOTAL ${currency(draft.chainId)} to send to the contract, excluding gas (for example 0.02). For a free mint, send 0. This is the total for all NFTs, not the price per NFT.`,
         rows,
       );
     case "schedule":
@@ -100,7 +106,7 @@ export function draftPrompt(draft: MintDraft): TelegramReply {
       );
     case "review":
       return reply(
-        `Review mint\nNetwork: ${network(draft.chainId)}\nContract: ${draft.contractAddress}\nWallet: ${draft.walletAddress}\nMethod: ${draft.method === "custom" ? "Custom calldata" : draft.method === "recipient" ? "mint(address,uint256)" : "mint(uint256)"}\n${draft.quantity ? `Quantity: ${draft.quantity}\n` : "Quantity/proofs: encoded in calldata\n"}Call selector: ${draft.calldata?.slice(0, 10)}\nCall size: ${((draft.calldata?.length ?? 2) - 2) / 2} bytes\nTotal value: ${formatEther(BigInt(draft.valueWei ?? "0"))} ETH + gas\nWhen: ${draft.scheduledFor === "now" ? "As soon as the worker is available" : dateText(draft.scheduledFor!)}\n\nConfirm only if these details match the mint you intend. Simulation runs before signing; a submitted transaction cannot be cancelled here.`,
+        `Review mint\nNetwork: ${network(draft.chainId)}\nContract: ${draft.contractAddress}\nWallet: ${draft.walletAddress}\nMethod: ${draft.method === "custom" ? "Custom calldata" : draft.method === "recipient" ? "mint(address,uint256)" : "mint(uint256)"}\n${draft.quantity ? `Quantity: ${draft.quantity}\n` : "Quantity/proofs: encoded in calldata\n"}Call selector: ${draft.calldata?.slice(0, 10)}\nCall size: ${((draft.calldata?.length ?? 2) - 2) / 2} bytes\nTotal value: ${formatEther(BigInt(draft.valueWei ?? "0"))} ${currency(draft.chainId)} + gas\nWhen: ${draft.scheduledFor === "now" ? "As soon as the worker is available" : dateText(draft.scheduledFor!)}\n\nConfirm only if these details match the mint you intend. Simulation runs before signing; a submitted transaction cannot be cancelled here.`,
         [[button("Confirm mint", draftAction(draft, "confirm"))], ...rows],
       );
   }
@@ -131,7 +137,8 @@ function encodeMint(draft: MintDraft) {
 }
 function back(draft: MintDraft) {
   const steps: Record<MintDraft["step"], MintDraft["step"]> = {
-    contract: "contract",
+    network: "network",
+    contract: "network",
     method: "contract",
     quantity: "method",
     calldata: "method",
@@ -148,7 +155,7 @@ export function looksSensitive(text: string) {
     /^(?:[a-z]+\s+){11,23}[a-z]+$/i.test(text.trim())
   );
 }
-export type TelegramInterfaceConfig = { appUrl: string; chainId: number };
+export type TelegramInterfaceConfig = { appUrl: string };
 
 async function showJob(
   userId: string,
@@ -179,15 +186,16 @@ async function showJob(
   const confirmed =
     history.find((t) => t.state === "CONFIRMED" || t.state === "REVERTED") ??
     history[0];
-  if (confirmed?.hash && /^0x[a-fA-F0-9]{64}$/.test(confirmed.hash))
+  const explorer = confirmed?.hash ? transactionExplorerUrl(confirmed.chainId, confirmed.hash) : null;
+  if (explorer)
     rows.push([
       {
         text: "View transaction",
-        url: `https://${job.chainId === 84532 ? "sepolia." : ""}basescan.org/tx/${confirmed.hash}`,
+        url: explorer,
       },
     ]);
   return reply(
-    `Mint job ${job.id}\nStatus: ${labels[job.state]}\nNetwork: ${network(job.chainId)}\nContract: ${job.contractAddress}\nValue: ${formatEther(BigInt(job.valueWei))} ETH + gas\nScheduled: ${dateText(job.scheduledFor)}${confirmed?.hash ? `\nTransaction: ${confirmed.hash}` : ""}\n\n${job.state === "SCHEDULED" ? "Cancellation is available until the worker claims this job." : "Execution has started or ended; cancellation is unavailable."}`,
+    `Mint job ${job.id}\nStatus: ${labels[job.state]}\nNetwork: ${network(job.chainId)}\nContract: ${job.contractAddress}\nValue: ${formatEther(BigInt(job.valueWei))} ${currency(job.chainId)} + gas\nScheduled: ${dateText(job.scheduledFor)}${confirmed?.hash ? `\nTransaction: ${confirmed.hash}` : ""}\n\n${job.state === "SCHEDULED" ? "Cancellation is available until the worker claims this job." : "Execution has started or ended; cancellation is unavailable."}`,
     rows,
   );
 }
@@ -249,6 +257,7 @@ export async function handleTelegramInput(
       return null;
     let draft =
       conversation && conversation.expiresAt > now ? conversation.draft : null;
+    if (draft && draft.step !== "network" && !isMintNetwork(draft.chainId)) draft = null;
     const save = async (response: TelegramReply) => {
       await tx
         .insert(telegramConversations)
@@ -299,7 +308,7 @@ export async function handleTelegramInput(
     if (action === "menu" || action === "help")
       return save(
         reply(
-          "ArmMint\nCreate a mint, review its contract and total ETH value, then confirm. The worker checks the call before signing and tracks the transaction. Use a dedicated burner wallet with enough ETH for the mint and gas.\n\n/mint — new mint\n/jobs — your jobs and status\n/wallet — secure wallet setup\n/cancel — discard the current draft\n/back — previous step\n/start — menu\n\nDrafts expire after 30 minutes. Starting a new mint replaces the current draft. Never send keys or seed phrases here.",
+          "ArmMint\nCreate a mint, review its contract and total native-currency value, then confirm. The worker checks the call before signing and tracks the transaction. Use a dedicated burner wallet with enough native currency for the mint and gas (USDC on Arc, ETH on Ink).\n\n/mint — new mint\n/jobs — your jobs and status\n/wallet — secure wallet setup\n/cancel — discard the current draft\n/back — previous step\n/start — menu\n\nDrafts expire after 30 minutes. Starting a new mint replaces the current draft. Never send keys or seed phrases here.",
           draft ? [[button("Resume draft", "resume")], ...menu] : menu,
         ),
       );
@@ -326,7 +335,7 @@ export async function handleTelegramInput(
         .slice(0, 5)
         .map((job) => [
           button(
-            `${job.state} · ${job.contractAddress.slice(0, 8)}… · ${job.id.slice(0, 8)}`,
+            `${network(job.chainId)} · ${job.state} · ${job.contractAddress.slice(0, 8)}… · ${job.id.slice(0, 8)}`,
             `job:${job.id}`,
           ),
         ]);
@@ -391,8 +400,7 @@ export async function handleTelegramInput(
       draft = {
         id: randomUUID(),
         revision: 0,
-        step: "contract",
-        chainId: config.chainId,
+        step: "network",
         walletAddress: wallet.address,
       };
       return save(draftPrompt(draft));
@@ -440,7 +448,7 @@ export async function handleTelegramInput(
           throw new MintInputError(
             "Your wallet changed. Start a new mint to review it.",
           );
-        if (draft.chainId !== config.chainId)
+        if (!isMintNetwork(draft.chainId))
           throw new MintInputError(
             "The supported network changed. Start a new mint.",
           );
@@ -469,7 +477,12 @@ export async function handleTelegramInput(
           ),
         );
       }
-      if (
+      if (draft.step === "network" && choice.startsWith("network-")) {
+        const chainId = Number(choice.slice(8));
+        if (!isMintNetwork(chainId)) throw new MintInputError("Choose a supported Arc or Ink network.");
+        // Changing networks invalidates all contract/value inputs from the old one.
+        draft = { id: draft.id, revision: draft.revision, walletAddress: draft.walletAddress, chainId, step: "contract" };
+      } else if (
         draft.step === "method" &&
         ["quantity", "recipient", "custom"].includes(choice)
       ) {
@@ -516,7 +529,7 @@ export async function handleTelegramInput(
               parseEther(text) >= 2n ** 256n
             )
               throw new MintInputError(
-                "Enter a non-negative ETH amount with at most 18 decimal places, such as 0.02.",
+                `Enter a non-negative ${currency(draft.chainId)} amount with at most 18 decimal places, such as 0.02.`,
               );
             draft.valueWei = parseEther(text).toString();
             draft.step = "schedule";

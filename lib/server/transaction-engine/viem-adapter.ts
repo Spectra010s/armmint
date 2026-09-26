@@ -52,15 +52,17 @@ export function createViemTransactionAdapter(options: {
       );
     }
   }
+  async function ensureNetwork() {
+    let chainId: number;
+    try { chainId = await publicClient.getChainId(); } catch { throw rpcError(); }
+    if (chainId !== options.chain.id)
+      throw new TransactionEngineError("INVALID_EXECUTION", "RPC chain does not match job");
+  }
   return {
     async prepare(request) {
       validate(request);
+      await ensureNetwork();
       try {
-        if ((await publicClient.getChainId()) !== request.chainId)
-          throw new TransactionEngineError(
-            "INVALID_EXECUTION",
-            "RPC chain does not match job",
-          );
         const fees = await publicClient.estimateFeesPerGas({ type: "eip1559" });
         const gas = await publicClient.estimateGas({
           account: request.from,
@@ -86,6 +88,7 @@ export function createViemTransactionAdapter(options: {
     },
     async simulate(request) {
       validate(request);
+      await ensureNetwork();
       try {
         await publicClient.call({
           account: request.from,
@@ -105,6 +108,7 @@ export function createViemTransactionAdapter(options: {
       }
     },
     async getPendingNonce(address) {
+      await ensureNetwork();
       try {
         return await publicClient.getTransactionCount({
           address,
@@ -115,6 +119,7 @@ export function createViemTransactionAdapter(options: {
       }
     },
     async getLatestNonce(address) {
+      await ensureNetwork();
       try {
         return await publicClient.getTransactionCount({
           address,
@@ -125,6 +130,7 @@ export function createViemTransactionAdapter(options: {
       }
     },
     async isKnown(hash) {
+      await ensureNetwork();
       try {
         await publicClient.getTransaction({ hash });
         return true;
@@ -135,6 +141,7 @@ export function createViemTransactionAdapter(options: {
     },
     async submit(request, onSigned) {
       validate(request);
+      await ensureNetwork();
       if (
         !onSigned ||
         request.gas === undefined ||
@@ -199,6 +206,7 @@ export function createViemTransactionAdapter(options: {
       }
     },
     async waitForReceipt(hash) {
+      await ensureNetwork();
       try {
         const receipt = await publicClient.getTransactionReceipt({ hash });
         const head = await publicClient.getBlockNumber({ cacheTime: 0 });

@@ -2,6 +2,7 @@ export type MintDraft = {
   id: string;
   revision: number;
   step:
+    | "network"
     | "contract"
     | "method"
     | "quantity"
@@ -9,7 +10,7 @@ export type MintDraft = {
     | "value"
     | "schedule"
     | "review";
-  chainId: number;
+  chainId?: number;
   walletAddress: string;
   contractAddress?: string;
   method?: "quantity" | "recipient" | "custom";

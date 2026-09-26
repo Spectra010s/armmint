@@ -10,12 +10,11 @@ const REQUIRED_ENV = [
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_BOT_USERNAME",
   "TELEGRAM_WEBHOOK_SECRET",
-  "BASE_RPC_URL",
 ] as const;
 
 export type ServerConfig = {
   [K in (typeof REQUIRED_ENV)[number]]: string;
-} & { BASE_CHAIN_ID: number };
+};
 
 function requireNonEmpty(name: (typeof REQUIRED_ENV)[number]): string {
   const value = process.env[name]?.trim();
@@ -28,7 +27,7 @@ function requireNonEmpty(name: (typeof REQUIRED_ENV)[number]): string {
 }
 
 function validateUrl(
-  name: "DATABASE_URL" | "BETTER_AUTH_URL" | "BASE_RPC_URL",
+  name: "DATABASE_URL" | "BETTER_AUTH_URL",
   value: string,
 ): void {
   let parsed: URL;
@@ -93,20 +92,9 @@ export function getServerConfig(): ServerConfig {
   const required = Object.fromEntries(
     REQUIRED_ENV.map((name) => [name, requireNonEmpty(name)]),
   ) as { [K in (typeof REQUIRED_ENV)[number]]: string };
-  const rawChainId = process.env.BASE_CHAIN_ID?.trim();
-  if (!rawChainId) {
-    throw new Error("Missing required server environment variable: BASE_CHAIN_ID");
-  }
-  const config: ServerConfig = {
-    ...required,
-    BASE_CHAIN_ID: Number(rawChainId),
-  };
-
-  if (![8453, 84532].includes(config.BASE_CHAIN_ID))
-    throw new Error("BASE_CHAIN_ID must be 8453 or 84532");
+  const config: ServerConfig = required;
   validateUrl("DATABASE_URL", config.DATABASE_URL);
   validateUrl("BETTER_AUTH_URL", config.BETTER_AUTH_URL);
-  validateUrl("BASE_RPC_URL", config.BASE_RPC_URL);
   validateTelegramBotUsername(config.TELEGRAM_BOT_USERNAME);
   decodeEncryptionKey(config.ARMINT_ENCRYPTION_KEY);
   if (config.BETTER_AUTH_SECRET.length < 32) {

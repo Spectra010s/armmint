@@ -263,14 +263,14 @@ after(async () => {
   if (client) await client.close();
   if (pool) await pool.end();
 });
-async function insertJob(id: string) {
+async function insertJob(id: string, chainId = 84532) {
   await db
     .insert(mintJobs)
     .values({
       id,
       userId: "user",
       walletId: "wallet",
-      chainId: 84532,
+      chainId,
       contractAddress: target,
       calldata,
       valueWei: "42",
@@ -682,8 +682,8 @@ test("wallet ownership mismatch is rejected before reading encrypted key materia
 });
 
 test("default worker invokes the production HTTP/viem engine", async () => {
-  const previous = process.env.BASE_RPC_URL;
-  process.env.BASE_RPC_URL = "https://rpc.example.test";
+  const previous = process.env.LEGACY_BASE_SEPOLIA_RPC_URL;
+  process.env.LEGACY_BASE_SEPOLIA_RPC_URL = "https://rpc.example.test";
   immediateReceipt = "success";
   const fetchMock = mock.method(
     globalThis,
@@ -703,8 +703,8 @@ test("default worker invokes the production HTTP/viem engine", async () => {
     assert.equal(decryptions, 1);
   } finally {
     fetchMock.mock.restore();
-    if (previous === undefined) delete process.env.BASE_RPC_URL;
-    else process.env.BASE_RPC_URL = previous;
+    if (previous === undefined) delete process.env.LEGACY_BASE_SEPOLIA_RPC_URL;
+    else process.env.LEGACY_BASE_SEPOLIA_RPC_URL = previous;
   }
 });
 
@@ -714,14 +714,14 @@ test("Telegram confirmation flows through production worker signing and status",
   await db.delete(mintJobs);
   await db.insert(telegramAccounts).values({ id: "telegram-user", userId: "user", telegramUserId: 101n });
   let updateId = 0;
-  const config = { appUrl: "https://armmint.example", chainId: 84532 };
+  const config = { appUrl: "https://armmint.example" };
   const send = (text: string) => handleTelegramInput({ updateId: ++updateId, chatId: 101, identity: { id: 101n, username: null }, text }, config);
   const click = (response: NonNullable<Awaited<ReturnType<typeof send>>>, label: string) => {
     const b = response.reply_markup!.inline_keyboard.flat().find(candidate => candidate.text === label)!;
     assert.ok("callback_data" in b);
     return handleTelegramInput({ updateId: ++updateId, chatId: 101, identity: { id: 101n, username: null }, callback: { id: String(updateId), data: b.callback_data } }, config);
   };
-  await send("/mint");
+  await click((await send("/mint"))!, "Ink Sepolia (testnet)");
   await click((await send(target))!, "mint(uint256)");
   await send("2");
   const review = await click((await send("0"))!, "Mint now");
@@ -730,11 +730,135 @@ test("Telegram confirmation flows through production worker signing and status",
   assert.equal(job.calldata, calldata);
   assert.equal(decryptions, 0);
   immediateReceipt = "success";
-  await tick();
+  await runWorkerTick(async (claimed, attempt) => {
+    const engine = await createProductionTransactionEngine({ transportForChain: multichainTransport([]) });
+    await engine.executeClaimedJob(claimed.id, attempt);
+  });
   assert.equal(decryptions, 1);
   assert.equal(broadcasts.length, 1);
   assert.match((await send(`/status ${job.id}`))!.text, /transaction confirmed/);
-  await tick();
+  await runWorkerTick(async (claimed, attempt) => {
+    const engine = await createProductionTransactionEngine({ transportForChain: multichainTransport([]) });
+    await engine.executeClaimedJob(claimed.id, attempt);
+  });
   assert.equal(decryptions, 1);
   assert.equal(broadcasts.length, 1);
+});
+
+// One production engine routes both networks; the transport factory only replaces
+// the network I/O. Wallet decryption, viem signing, persistence and recovery are real.
+function multichainTransport(calls: { chainId: number; method: string }[], wrongChain = false) {
+  return (chainId: number) => custom({
+    async request(args) {
+      calls.push({ chainId, method: args.method });
+      if (args.method === "eth_chainId") return `0x${(wrongChain ? 84532 : chainId).toString(16)}`;
+      if (args.method === "eth_sendRawTransaction") {
+        const signed = parseTransaction((args.params as Hex[])[0]);
+        assert.equal(signed.chainId, chainId);
+      }
+      return rpc.request(args as Parameters<typeof rpc.request>[0]);
+    },
+  }, { retryCount: 0 });
+}
+
+test("one worker routes Arc and Ink, isolates identical wallet nonces, and recovers confirmations without signing", async () => {
+  await db.delete(mintJobs);
+  await insertJob("arc", 5042002);
+  await insertJob("ink", 763373);
+  const calls: { chainId: number; method: string }[] = [];
+  const makeEngine = () => createProductionTransactionEngine({ transportForChain: multichainTransport(calls) });
+  const engine = await makeEngine();
+  const handler = async (job: typeof mintJobs.$inferSelect, attempt: string) => { await engine.executeClaimedJob(job.id, attempt); };
+  await runWorkerTick(handler, "multi-worker");
+  await runWorkerTick(handler, "multi-worker");
+  const initial = await state();
+  assert.deepEqual(initial.txs.map(t => [t.chainId, t.nonce]).sort(), [[5042002, 7], [763373, 7]].sort());
+  assert.equal(decryptions, 2);
+  for (const t of initial.txs) receipts.set(t.hash!, "success");
+  // A new engine instance represents process restart; persisted chainId selects I/O.
+  const restarted = await makeEngine();
+  await db.update(mintJobs).set({ claimExpiresAt: new Date(0) });
+  for (let i = 0; i < 2; i++) await runWorkerTick(async (job, attempt) => { await restarted.executeClaimedJob(job.id, attempt); }, "restarted");
+  assert.equal(decryptions, 2);
+  assert.equal(broadcasts.length, 2);
+  assert.ok((await state()).jobs.every(j => j.state === "SUCCEEDED"));
+  for (const chainId of [5042002, 763373]) {
+    assert.ok(calls.some(c => c.chainId === chainId && c.method === "eth_call"));
+    assert.ok(calls.some(c => c.chainId === chainId && c.method === "eth_getTransactionReceipt"));
+  }
+});
+
+for (const chainId of [5042002, 763373]) {
+  test(`retry and same-nonce gas replacement stay on network ${chainId}`, async () => {
+    await db.update(mintJobs).set({ chainId });
+    const calls: { chainId: number; method: string }[] = [];
+    const engine = await createProductionTransactionEngine({ transportForChain: multichainTransport(calls), retryPolicy: replacementPolicy });
+    const step = async () => {
+      await db.update(mintJobs).set({ claimExpiresAt: new Date(0) });
+      await runWorkerTick(async (job, attempt) => { await engine.executeClaimedJob(job.id, attempt); }, "multi");
+    };
+    failMethod = "eth_call";
+    await step();
+    assert.equal(decryptions, 0);
+    failMethod = null;
+    await step();
+    await step();
+    const rows = (await state()).txs;
+    assert.equal(rows.length, 2);
+    const replacement = rows.find(row => row.replacesTransactionId)!;
+    const original = rows.find(row => row.id === replacement.replacesTransactionId)!;
+    assert.equal(replacement.chainId, chainId);
+    assert.equal(original.chainId, chainId);
+    assert.equal(replacement.nonce, original.nonce);
+    assert.ok(BigInt(replacement.request!.maxFeePerGas) > BigInt(original.request!.maxFeePerGas));
+    assert.ok(calls.every(c => c.chainId === chainId));
+  });
+}
+
+test("wrong RPC network cannot confirm or sign an already submitted transaction", async () => {
+  await db.update(mintJobs).set({ chainId: 5042002 });
+  const calls: { chainId: number; method: string }[] = [];
+  const engine = await createProductionTransactionEngine({ transportForChain: multichainTransport(calls) });
+  await runWorkerTick(async (job, attempt) => { await engine.executeClaimedJob(job.id, attempt); });
+  const [tx] = (await state()).txs;
+  receipts.set(tx.hash!, "success");
+  calls.length = 0;
+  const wrong = await createProductionTransactionEngine({ transportForChain: multichainTransport(calls, true) });
+  await db.update(mintJobs).set({ claimExpiresAt: new Date(0) });
+  await runWorkerTick(async (job, attempt) => { await wrong.executeClaimedJob(job.id, attempt); });
+  assert.equal(decryptions, 1);
+  assert.ok(!calls.some(c => c.method === "eth_getTransactionReceipt"));
+  assert.notEqual((await state()).jobs[0].state, "SUCCEEDED");
+});
+
+test("default worker routes Arc and Ink through their own runtime HTTP endpoints", async () => {
+  await db.delete(mintJobs);
+  await insertJob("arc-http", 5042002);
+  await insertJob("ink-http", 763373);
+  immediateReceipt = "success";
+  const previousArc = process.env.ARC_TESTNET_RPC_URL;
+  const previousInk = process.env.INK_SEPOLIA_RPC_URL;
+  process.env.ARC_TESTNET_RPC_URL = "https://arc.example.test/rpc";
+  process.env.INK_SEPOLIA_RPC_URL = "https://ink.example.test/rpc";
+  const urls = new Set<string>();
+  const fetchMock = mock.method(globalThis, "fetch", async (url: unknown, init?: RequestInit) => {
+    const endpoint = typeof url === "string" || url instanceof URL ? String(url) : (url as Request).url;
+    urls.add(endpoint);
+    const chainId = endpoint === process.env.ARC_TESTNET_RPC_URL ? 5042002 : endpoint === process.env.INK_SEPOLIA_RPC_URL ? 763373 : 0;
+    assert.notEqual(chainId, 0);
+    const body = JSON.parse(String(init?.body));
+    const result = body.method === "eth_chainId" ? `0x${chainId.toString(16)}` : await rpc.request(body);
+    return Response.json({ jsonrpc: "2.0", id: body.id, result });
+  });
+  try {
+    await runWorkerTick();
+    await runWorkerTick();
+    assert.equal(urls.size, 2);
+    assert.ok((await state()).jobs.every(job => job.state === "SUCCEEDED"));
+    assert.deepEqual(broadcasts.map(raw => parseTransaction(raw).chainId).sort(), [5042002, 763373].sort());
+  } finally {
+    fetchMock.mock.restore();
+    if (previousArc === undefined) delete process.env.ARC_TESTNET_RPC_URL; else process.env.ARC_TESTNET_RPC_URL = previousArc;
+    if (previousInk === undefined) delete process.env.INK_SEPOLIA_RPC_URL; else process.env.INK_SEPOLIA_RPC_URL = previousInk;
+  }
 });

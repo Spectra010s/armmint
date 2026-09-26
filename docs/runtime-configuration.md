@@ -10,10 +10,10 @@ Production images are built without application credentials. Coolify supplies co
 | `app/api/auth/[...all]/route.ts` | Runtime: auth handlers and redirect configuration | Request handler |
 | `lib/server/session.ts` | Runtime: session and auth | Await Next request headers before calling `getAuth()`; authenticated pages render dynamically |
 | `lib/db/index.ts` | Runtime: `DATABASE_URL`, connection pool | First pool operation via the lazy pool proxy |
-| `lib/server/config.ts` | Runtime: all required server values, chain ID, current/previous wallet encryption keys, production URL rules | Explicit validation/accessor calls |
+| `lib/server/config.ts` | Runtime: all required server values, current/previous wallet encryption keys, production URL rules | Explicit validation/accessor calls |
 | Wallet, Telegram link and webhook routes | Runtime: origin, Telegram and server configuration | Request handlers |
 | Wallet key service and rotation service | Runtime: encryption keys | Encrypt/decrypt/rotation operation |
-| Transaction engine and Base/viem adapters | Runtime: RPC URL, public/wallet clients, signing | Explicit factory/execution calls; signing key remains inside signing boundary |
+| Transaction engine and network/viem adapters | Runtime: RPC URL, public/wallet clients, signing | Explicit factory/execution calls; signing key remains inside signing boundary |
 | Worker loop and job/scheduler services | Runtime: database and transaction engine | Called operations; imports only define functions |
 | `scripts/worker.ts`, Telegram setup and wallet rotation scripts | Runtime executable entrypoints | Explicit CLI invocation; never imported by routes |
 | `drizzle.config.ts` | Database tooling: `DATABASE_URL` | Explicit Drizzle command; not application build configuration |

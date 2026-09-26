@@ -42,7 +42,7 @@ const { claimNextDueMintJob } = await import("./mint-job-claim.ts");
 const { buildMintTransaction } =
   await import("./transaction-engine/claimed-job.ts");
 const { issueTelegramLinkToken } = await import("./telegram-link-service.ts");
-const config = { appUrl: "https://armmint.example", chainId: 8453 };
+const config = { appUrl: "https://armmint.example" };
 const now = new Date("2026-09-23T12:00:00Z");
 const contract = `0x${"ab".repeat(20)}`;
 const walletAddress = `0x${"12".repeat(20)}`;
@@ -137,7 +137,7 @@ async function click(
   return handleTelegramInput(callback(b.callback_data, identity), config, at);
 }
 async function review(method = "mint(uint256)") {
-  await send("/mint");
+  await click(await send("/mint"), "Ink Sepolia (testnet)");
   let r = await send(contract);
   r = await click(r, method);
   r = await send(method === "Encoded calldata" ? "0x12345678" : "2");
@@ -145,7 +145,7 @@ async function review(method = "mint(uint256)") {
   return click(r, "Mint now");
 }
 const mint = () => ({
-  chainId: 8453,
+  chainId: 763373,
   contractAddress: contract,
   calldata: "0x12345678",
   valueWei: "0",
@@ -243,7 +243,7 @@ test("duplicate updates and concurrent confirmation clicks create exactly one mi
 });
 
 test("validation rejects invalid addresses, quantities, ETH precision, calldata, and dates without advancing", async () => {
-  await send("/mint");
+  await click(await send("/mint"), "Ink Sepolia (testnet)");
   assert.match((await send("bad-address"))!.text, /valid, non-zero/);
   let r = await send(contract);
   r = await click(r, "mint(uint256)");
@@ -262,7 +262,7 @@ test("validation rejects invalid addresses, quantities, ETH precision, calldata,
     assert.match((await send(invalid))!.text, /future UTC time/);
   assert.match((await send("2026-10-01T12:00:00Z"))!.text, /Review mint/);
   assert.equal((await db.select().from(mintJobs)).length, 0);
-  await send("/mint");
+  await click(await send("/mint"), "Ink Sepolia (testnet)");
   r = await send(contract);
   await click(r, "Encoded calldata");
   for (const invalid of ["0x123", "0xGGGGGGGG", `0x${"aa".repeat(1801)}`])
@@ -270,7 +270,7 @@ test("validation rejects invalid addresses, quantities, ETH precision, calldata,
 });
 
 test("likely private keys and seed phrases are neither stored nor echoed", async () => {
-  await send("/mint");
+  await click(await send("/mint"), "Ink Sepolia (testnet)");
   let r = await send(contract);
   await click(r, "Encoded calldata");
   for (const secret of [
@@ -304,7 +304,7 @@ test("back, cancel, restart and expiry prevent stale draft confirmation", async 
     /ArmMint/,
   );
   assert.equal((await db.select().from(telegramConversations))[0].draft, null);
-  await send("/mint");
+  await click(await send("/mint"), "Ink Sepolia (testnet)");
   assert.match((await click(old, "Confirm mint"))!.text, /older step/);
   assert.equal((await db.select().from(mintJobs)).length, 0);
 });
@@ -360,7 +360,7 @@ test("listing paginates and status reflects actual lifecycle and explorer transa
     .values({
       id: "tx",
       executionAttemptId: "attempt",
-      chainId: 8453,
+      chainId: 763373,
       nonce: 0,
       state: "CONFIRMED",
       hash: `0x${"cd".repeat(32)}`,
@@ -374,7 +374,7 @@ test("listing paginates and status reflects actual lifecycle and explorer transa
   assert.ok(
     status!
       .reply_markup!.inline_keyboard.flat()
-      .some((b) => "url" in b && b.url.includes("basescan.org/tx/")),
+      .some((b) => "url" in b && b.url.includes("explorer-sepolia.inkonchain.com/tx/")),
   );
 });
 
@@ -426,7 +426,7 @@ test("every execution/terminal state refuses cancellation, and signed scheduled 
     .values({
       id: "signed-tx",
       executionAttemptId: "signed-attempt",
-      chainId: 8453,
+      chainId: 763373,
       nonce: 0,
       hash: `0x${"ab".repeat(32)}`,
     });
@@ -470,4 +470,45 @@ test("shared validation and idempotency enforce backend invariants", async () =>
     createMintJob("bob", mint(), "same", now),
     /Set up a valid burner wallet/,
   );
+});
+
+test("Telegram requires explicit network selection and clears inputs when changing networks", async () => {
+  let r = await send("/mint");
+  assert.match(r!.text, /Choose the mint network/);
+  assert.match((await send(contract))!.text, /Choose the mint network/);
+  r = await click(r, "Arc Testnet (testnet)");
+  assert.match(r!.text, /Arc Testnet/);
+  r = await send(contract);
+  await send("/back");
+  r = await send("/back");
+  r = await click(r, "Ink Sepolia (testnet)");
+  const [conversation] = await db.select().from(telegramConversations);
+  assert.equal(conversation.draft!.chainId, 763373);
+  assert.equal(conversation.draft!.contractAddress, undefined);
+  assert.match(r!.text, /contract address/);
+});
+
+test("Arc Telegram review, job creation, listing and explorer use USDC and the selected chain", async () => {
+  await click(await send("/mint"), "Arc Testnet (testnet)");
+  let r = await send(contract);
+  await click(r, "mint(uint256)");
+  r = await send("1");
+  assert.match(r!.text, /TOTAL USDC/);
+  await send("0.25");
+  r = await click(await send("/start").then(menuReply => click(menuReply, "Resume draft")), "Mint now");
+  assert.match(r!.text, /0.25 USDC/);
+  await click(r, "Confirm mint");
+  const [job] = await db.select().from(mintJobs);
+  assert.equal(job.chainId, 5042002);
+  assert.equal(job.valueWei, "250000000000000000");
+  assert.match(JSON.stringify(await send("/jobs")), /Arc Testnet/);
+  assert.match((await send(`/status ${job.id}`))!.text, /Arc Testnet/);
+});
+
+test("new jobs reject legacy and unsupported networks while historical Base stays labelled", async () => {
+  for (const chainId of [8453, 84532, 1, 0, 999999])
+    assert.throws(() => validateMintConfiguration({ ...mint(), chainId }, now), /supported/);
+  const job = await createMintJob("alice", mint(), randomUUID(), now);
+  await db.update(mintJobs).set({ chainId: 8453 }).where(eq(mintJobs.id, job.id));
+  assert.match((await send(`/status ${job.id}`))!.text, /Base \(legacy\)/);
 });
