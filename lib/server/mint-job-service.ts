@@ -1,3 +1,4 @@
+import { isMintNetwork } from "@/lib/networks";
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
@@ -24,8 +25,8 @@ export function validateMintConfiguration(
   input: MintConfiguration,
   now = new Date(),
 ) {
-  if (![8453, 84532].includes(input.chainId))
-    throw new MintInputError("Choose a supported Base network.");
+  if (!isMintNetwork(input.chainId))
+    throw new MintInputError("Choose a supported Arc or Ink network.");
   if (
     !isAddress(input.contractAddress) ||
     input.contractAddress.toLowerCase() === zeroAddress
@@ -85,7 +86,10 @@ export async function createMintJob(
           eq(mintJobs.idempotencyKey, idempotencyKey),
         ),
       );
-    if (existing) return existing;
+    if (existing) {
+      if (existing.chainId !== input.chainId) throw new MintInputError("This request was already used for another network.");
+      return existing;
+    }
     const scheduledFor = validateMintConfiguration(input, now);
     const wallet = await getUserWallet(userId, tx);
     if (!wallet || !isAddress(wallet.address))
@@ -118,6 +122,7 @@ export async function createMintJob(
       );
     if (!retry)
       throw new MintInputError("Unable to create this job. Start a new mint.");
+    if (retry.chainId !== input.chainId) throw new MintInputError("This request was already used for another network.");
     return retry;
   };
   return database ? create(database) : db.transaction(create);
@@ -147,7 +152,7 @@ export async function getMintJob(
     .where(and(eq(mintJobs.id, jobId), eq(mintJobs.userId, userId)));
   if (!job) return null;
   const history = await database
-    .select({ hash: transactions.hash, state: transactions.state })
+    .select({ hash: transactions.hash, state: transactions.state, chainId: transactions.chainId })
     .from(transactions)
     .innerJoin(
       executionAttempts,

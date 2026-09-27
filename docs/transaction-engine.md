@@ -1,10 +1,10 @@
 # Transaction execution
 
-Run `pnpm worker` with Node 24.19+ and the server environment from `lib/server/config.ts` (including `DATABASE_URL`, `BASE_RPC_URL` and `ARMINT_ENCRYPTION_KEY`). The worker reads `.env`, claims due jobs, reuses their execution attempt and invokes `createProductionTransactionEngine().executeClaimedJob(jobId, attemptId)`. Each tick processes one job. Multiple worker processes may share the database.
+Run `pnpm worker` with Node 24.19+ and the server environment from `lib/server/config.ts` (including `DATABASE_URL` and `ARMINT_ENCRYPTION_KEY`, plus optional per-network RPC overrides). The worker reads `.env`, claims due jobs, reuses their execution attempt and invokes `createProductionTransactionEngine().executeClaimedJob(jobId, attemptId)`. Each tick processes one job. Multiple worker processes may share the database.
 
 ## Mint inputs
 
-A scheduled mint job supplies its owning user and wallet, Base (8453) or Base Sepolia (84532) chain ID, target contract, encoded `calldata`, and decimal-string `valueWei`. Calldata must include the contract's actual mint selector and arguments (quantity, allowlist proof, recipient, etc.); the engine does not assume that every NFT contract uses the same ABI. Missing calldata fails closed. The configured RPC must report the job's chain ID. Use a separate worker/database deployment for each configured Base network.
+A scheduled mint job supplies its owning user and wallet, an explicit registry chain ID, target contract, encoded `calldata`, and decimal-string `valueWei`. Calldata must include the contract's actual mint selector and arguments (quantity, allowlist proof, recipient, etc.); the engine does not assume that every NFT contract uses the same ABI. Missing calldata fails closed. The configured RPC must report the job's chain ID. A single worker/database handles every supported network; each job selects its own client. See [Multichain networks](multichain.md).
 
 The loader validates wallet ownership and public address. Public RPC calls estimate gas and EIP-1559 fees and simulate the mint. The viem signing adapter alone loads the encrypted wallet and calls the existing temporary-decryption service; it also verifies that the derived account matches the job. Plaintext keys and serialized signed transactions are not stored or logged. JavaScript strings cannot be reliably zeroed; plaintext/account references stay inside the signing callback and are not cached.
 
@@ -26,4 +26,4 @@ RPC errors are not evidence that a transaction was dropped. Pending or no-longer
 
 `pnpm lint`, `pnpm typecheck` and `pnpm test` run without production credentials. Tests use real viem transaction signing, encrypted wallet records and controlled RPC responses. PGlite supplies isolated PostgreSQL semantics locally. CI additionally runs the production execution suite against PostgreSQL 16 with separate connections, covering nonce reservation and competing executor locks. `ENGINE_TEST_DATABASE_URL` selects a disposable database for that suite; never point it at application data because fixtures reset its test tables.
 
-Tests do not spend funds or send transactions to Base. On-chain execution still depends on the configured contract, wallet balance, RPC availability and the applied database schema.
+Tests do not spend funds or send transactions to public networks. On-chain execution still depends on the configured contract, wallet balance, RPC availability and the applied database schema.
