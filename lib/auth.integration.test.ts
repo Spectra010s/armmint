@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle as pgliteDrizzle } from "drizzle-orm/pglite";
 import { drizzle as pgDrizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { pushSchema } from "drizzle-kit/api";
+import { migrateTestDatabase } from "@/tests/migrate-test-database";
 import { NextRequest } from "next/server";
 import * as schema from "./db/schema.ts";
 const {
@@ -106,8 +106,7 @@ const { consumeTelegramLinkToken, issueTelegramLinkToken } =
 const { handleTelegramInput } = await import("./server/telegram-interface.ts");
 
 before(async () => {
-  const result = await pushSchema(schema, db);
-  await result.apply();
+  await migrateTestDatabase(pool, client);
 });
 beforeEach(async () => {
   for (const table of [

@@ -1,15 +1,10 @@
-import {
-  mintJobState,
-  executionAttemptState,
-  transactionState,
-} from "@/lib/db/schema";
 import assert from "node:assert/strict";
 import { after, before, beforeEach, mock, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle as pgliteDrizzle } from "drizzle-orm/pglite";
 import { drizzle as pgDrizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { pushSchema } from "drizzle-kit/api";
+import { migrateTestDatabase } from "@/tests/migrate-test-database";
 import { eq } from "drizzle-orm";
 import {
   custom,
@@ -205,21 +200,7 @@ const transport = custom(rpc, { retryCount: 0 });
 
 before(async () => {
   process.env.ARMINT_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
-  const schema = await pushSchema(
-    {
-      mintJobState,
-      executionAttemptState,
-      transactionState,
-      users,
-      wallets,
-      mintJobs,
-      executionAttempts,
-      transactions,
-      telegramAccounts, telegramConversations, telegramLinkTokens,
-    },
-    db,
-  );
-  await schema.apply();
+  await migrateTestDatabase(pool, client);
 });
 beforeEach(async () => {
   await db.delete(transactions);

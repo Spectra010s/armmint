@@ -5,7 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle as pgliteDrizzle } from "drizzle-orm/pglite";
 import { drizzle as pgDrizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { pushSchema } from "drizzle-kit/api";
+import { migrateTestDatabase } from "@/tests/migrate-test-database";
 import { eq } from "drizzle-orm";
 import { decodeFunctionData, parseAbi } from "viem";
 import {
@@ -18,8 +18,6 @@ import {
   executionAttempts,
   transactions,
   mintJobState,
-  executionAttemptState,
-  transactionState,
 } from "@/lib/db/schema";
 import type { TelegramInput, TelegramReply } from "./telegram-types";
 
@@ -49,23 +47,7 @@ const walletAddress = `0x${"12".repeat(20)}`;
 let sequence = 0;
 
 before(async () => {
-  const schema = await pushSchema(
-    {
-      users,
-      wallets,
-      telegramAccounts,
-      telegramConversations,
-      telegramLinkTokens,
-      mintJobs,
-      executionAttempts,
-      transactions,
-      mintJobState,
-      executionAttemptState,
-      transactionState,
-    },
-    db,
-  );
-  await schema.apply();
+  await migrateTestDatabase(pool, client);
 });
 beforeEach(async () => {
   for (const table of [
