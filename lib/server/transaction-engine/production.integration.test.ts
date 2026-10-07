@@ -112,7 +112,7 @@ const rpc = {
     const args = params as unknown[] | undefined;
     switch (method) {
       case "eth_chainId":
-        return "0x14a34";
+        return "0xba5ed";
       case "eth_getBlockByNumber":
         return block;
       case "eth_blockNumber":
@@ -179,7 +179,7 @@ const rpc = {
           gas: "0x186a0",
           gasPrice: "0x64",
           type: "0x2",
-          chainId: "0x14a34",
+          chainId: "0xba5ed",
           maxFeePerGas: "0x7a",
           maxPriorityFeePerGas: "0x2",
           blockHash: null,
@@ -244,7 +244,7 @@ after(async () => {
   if (client) await client.close();
   if (pool) await pool.end();
 });
-async function insertJob(id: string, chainId = 84532) {
+async function insertJob(id: string, chainId = 763373) {
   await db
     .insert(mintJobs)
     .values({
@@ -663,8 +663,8 @@ test("wallet ownership mismatch is rejected before reading encrypted key materia
 });
 
 test("default worker invokes the production HTTP/viem engine", async () => {
-  const previous = process.env.LEGACY_BASE_SEPOLIA_RPC_URL;
-  process.env.LEGACY_BASE_SEPOLIA_RPC_URL = "https://rpc.example.test";
+  const previous = process.env.INK_SEPOLIA_RPC_URL;
+  process.env.INK_SEPOLIA_RPC_URL = "https://rpc.example.test";
   immediateReceipt = "success";
   const fetchMock = mock.method(
     globalThis,
@@ -684,8 +684,8 @@ test("default worker invokes the production HTTP/viem engine", async () => {
     assert.equal(decryptions, 1);
   } finally {
     fetchMock.mock.restore();
-    if (previous === undefined) delete process.env.LEGACY_BASE_SEPOLIA_RPC_URL;
-    else process.env.LEGACY_BASE_SEPOLIA_RPC_URL = previous;
+    if (previous === undefined) delete process.env.INK_SEPOLIA_RPC_URL;
+    else process.env.INK_SEPOLIA_RPC_URL = previous;
   }
 });
 
@@ -732,7 +732,7 @@ function multichainTransport(calls: { chainId: number; method: string }[], wrong
   return (chainId: number) => custom({
     async request(args) {
       calls.push({ chainId, method: args.method });
-      if (args.method === "eth_chainId") return `0x${(wrongChain ? 84532 : chainId).toString(16)}`;
+      if (args.method === "eth_chainId") return `0x${(wrongChain ? 763373 : chainId).toString(16)}`;
       if (args.method === "eth_sendRawTransaction") {
         const signed = parseTransaction((args.params as Hex[])[0]);
         assert.equal(signed.chainId, chainId);

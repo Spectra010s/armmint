@@ -207,4 +207,4 @@ The future feature should add a new job/action type rather than create a second 
 - Complex portfolio management
 
 
-Network routing, nonce isolation and Base compatibility are described in [Multichain networks](multichain.md).
+Network routing and nonce isolation are described in [Multichain networks](multichain.md).

@@ -1,5 +1,5 @@
 import { defineChain } from "viem";
-import { ink, inkSepolia, base, baseSepolia } from "viem/chains";
+import { ink, inkSepolia } from "viem/chains";
 import type { Chain } from "viem";
 
 // Official RH/Ink connection docs verified 2026-10-07 (docs.robinhood.com/chain,
@@ -34,19 +34,17 @@ export const robinhood = defineChain({
 export type Network = {
   chain: Chain;
   rpcEnv: string;
-  legacy: boolean;
 };
+// No Base jobs were ever created in production, so no legacy registry remains.
+// Any historical row with another chain ID displays as unknown and fails closed.
 export const NETWORKS = [
-  { chain: robinhoodTestnet, rpcEnv: "RH_TESTNET_RPC_URL", legacy: false },
-  { chain: inkSepolia, rpcEnv: "INK_SEPOLIA_RPC_URL", legacy: false },
-  { chain: robinhood, rpcEnv: "RH_RPC_URL", legacy: false },
-  { chain: ink, rpcEnv: "INK_RPC_URL", legacy: false },
-  // Keep existing Base jobs executable and auditable; never offer new ones.
-  { chain: base, rpcEnv: "LEGACY_BASE_RPC_URL", legacy: true },
-  { chain: baseSepolia, rpcEnv: "LEGACY_BASE_SEPOLIA_RPC_URL", legacy: true },
+  { chain: robinhoodTestnet, rpcEnv: "RH_TESTNET_RPC_URL" },
+  { chain: inkSepolia, rpcEnv: "INK_SEPOLIA_RPC_URL" },
+  { chain: robinhood, rpcEnv: "RH_RPC_URL" },
+  { chain: ink, rpcEnv: "INK_RPC_URL" },
 ] as const satisfies readonly Network[];
 export type NetworkChainId = (typeof NETWORKS)[number]["chain"]["id"];
-export const MINT_NETWORKS = NETWORKS.filter((network) => !network.legacy);
+export const MINT_NETWORKS = NETWORKS;
 export function getNetwork(chainId: number): Network | undefined {
   return NETWORKS.find((network) => network.chain.id === chainId);
 }
@@ -55,7 +53,7 @@ export function isMintNetwork(chainId: unknown): chainId is NetworkChainId {
 }
 export function networkName(chainId: number): string {
   const network = getNetwork(chainId);
-  return network ? `${network.chain.name}${network.legacy ? " (legacy)" : ""}` : `Unknown network (${chainId})`;
+  return network ? network.chain.name : `Unknown network (${chainId})`;
 }
 export function nativeSymbol(chainId: number): string {
   return getNetwork(chainId)?.chain.nativeCurrency.symbol ?? "native units";

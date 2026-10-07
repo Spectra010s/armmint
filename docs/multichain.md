@@ -22,7 +22,7 @@ Wallet decryption stays inside the existing signing callback. Recovery loads the
 
 Jobs and transactions already persisted `chain_id`; no new identity column or backfill is needed. Migration `0005_multichain_transaction_identity.sql` changes hash uniqueness and adds a composite replacement foreign key over original ID, chain ID, nonce and execution attempt. Its referenced unique constraint is ordered before the foreign key (Drizzle's generated statement order required correction). Existing invalid replacement relationships make migration fail rather than silently rewriting records.
 
-Historical Base 8453 and Base Sepolia 84532 records retain their exact chain IDs, display as legacy, and remain recoverable through their own registry clients/explorers. Optional `LEGACY_BASE_RPC_URL` / `LEGACY_BASE_SEPOLIA_RPC_URL` overrides support private legacy providers. New Base jobs are rejected; old Base Telegram drafts are discarded and must restart with an explicit supported network. Remove the obsolete `BASE_CHAIN_ID` and `BASE_RPC_URL` environment settings after configuring any needed legacy overrides. Unsupported historical chain IDs display as unknown and fail execution closed.
+No Base jobs were ever created in production, so there is no legacy registry: any other chain ID (including historical Base 8453/84532) displays as unknown and fails execution closed. Old Base Telegram drafts are discarded and must restart with an explicit supported network.
 
 Generate/apply migrations through the usual Drizzle deployment process, taking a database backup first. Apply this migration before deploying the new web and worker versions together. The migration tests replay the historical SQL files against a disposable database with Base rows before upgrading. No production database is involved in tests.
 
@@ -34,7 +34,7 @@ Telegram: `/mint` → select network → contract → method/quantity or calldat
 
 ## Verification and testnet smoke test
 
-Tests cover real viem signing with encrypted wallet fixtures and controlled RPC transports for both testnets, nonce isolation, replacement/retry routing, wrong-network recovery, UI/API/Telegram selection, legacy data and migration constraints. Existing Base engine tests remain to cover historical execution and the earlier safety guarantees. CI runs PGlite and PostgreSQL suites, a production Next build with no runtime configuration, and both Docker targets.
+Tests cover real viem signing with encrypted wallet fixtures and controlled RPC transports for both testnets, nonce isolation, replacement/retry routing, wrong-network recovery, UI/API/Telegram selection, migration constraints and unknown-network handling. CI runs PGlite and PostgreSQL suites, a production Next build with no runtime configuration, and both Docker targets.
 
 For an on-chain smoke test, fund the single burner address on Robinhood Chain Testnet with test ETH and Ink Sepolia with test ETH. Deploy or choose a verified test mint contract on each chain. Configure runtime endpoints, create one reviewed job per network from web or Telegram, and verify each receipt through its own explorer. Restart the worker while a job is pending and confirm that the same transaction is recovered. Automated verification does not fund wallets or broadcast to public chains.
 
@@ -45,5 +45,5 @@ For an on-chain smoke test, fund the single burner address on Robinhood Chain Te
 - Nonce / leases / retries / replacements: retained engine and locks; cross-network request/recovery guards added.
 - Confirmations / restart: verify RPC network before all receipt/nonce operations, including persisted hashes.
 - APIs / web: new authenticated creation path and explicit network selector; history uses transaction chain for links.
-- Telegram: network step, chain-aware currency, lists and explorers; stale legacy drafts cannot be repurposed.
-- Tests / docs / Docker: legacy fixtures retained, new multichain paths covered, no runtime config at imports.
+- Telegram: network step, chain-aware currency, lists and explorers; stale drafts cannot be repurposed.
+- Tests / docs / Docker: new multichain paths covered, no runtime config at imports.

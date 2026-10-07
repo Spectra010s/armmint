@@ -487,10 +487,10 @@ test("RH Telegram review, job creation, listing and explorer use ETH and the sel
   assert.match((await send(`/status ${job.id}`))!.text, /Robinhood Chain Testnet/);
 });
 
-test("new jobs reject legacy and unsupported networks while historical Base stays labelled", async () => {
+test("new jobs reject unsupported networks and unknown chains stay labelled", async () => {
   for (const chainId of [8453, 84532, 1, 0, 999999])
     assert.throws(() => validateMintConfiguration({ ...mint(), chainId }, now), /supported/);
   const job = await createMintJob("alice", mint(), randomUUID(), now);
   await db.update(mintJobs).set({ chainId: 8453 }).where(eq(mintJobs.id, job.id));
-  assert.match((await send(`/status ${job.id}`))!.text, /Base \(legacy\)/);
+  assert.match((await send(`/status ${job.id}`))!.text, /Unknown network \(8453\)/);
 });
