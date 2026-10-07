@@ -458,8 +458,8 @@ test("Telegram requires explicit network selection and clears inputs when changi
   let r = await send("/mint");
   assert.match(r!.text, /Choose the mint network/);
   assert.match((await send(contract))!.text, /Choose the mint network/);
-  r = await click(r, "Arc Testnet (testnet)");
-  assert.match(r!.text, /Arc Testnet/);
+  r = await click(r, "Robinhood Chain Testnet (testnet)");
+  assert.match(r!.text, /Robinhood Chain Testnet/);
   r = await send(contract);
   await send("/back");
   r = await send("/back");
@@ -470,21 +470,21 @@ test("Telegram requires explicit network selection and clears inputs when changi
   assert.match(r!.text, /contract address/);
 });
 
-test("Arc Telegram review, job creation, listing and explorer use USDC and the selected chain", async () => {
-  await click(await send("/mint"), "Arc Testnet (testnet)");
+test("RH Telegram review, job creation, listing and explorer use ETH and the selected chain", async () => {
+  await click(await send("/mint"), "Robinhood Chain Testnet (testnet)");
   let r = await send(contract);
   await click(r, "mint(uint256)");
   r = await send("1");
-  assert.match(r!.text, /TOTAL USDC/);
+  assert.match(r!.text, /TOTAL ETH/);
   await send("0.25");
   r = await click(await send("/start").then(menuReply => click(menuReply, "Resume draft")), "Mint now");
-  assert.match(r!.text, /0.25 USDC/);
+  assert.match(r!.text, /0.25 ETH/);
   await click(r, "Confirm mint");
   const [job] = await db.select().from(mintJobs);
-  assert.equal(job.chainId, 5042002);
+  assert.equal(job.chainId, 46630);
   assert.equal(job.valueWei, "250000000000000000");
-  assert.match(JSON.stringify(await send("/jobs")), /Arc Testnet/);
-  assert.match((await send(`/status ${job.id}`))!.text, /Arc Testnet/);
+  assert.match(JSON.stringify(await send("/jobs")), /Robinhood Chain Testnet/);
+  assert.match((await send(`/status ${job.id}`))!.text, /Robinhood Chain Testnet/);
 });
 
 test("new jobs reject legacy and unsupported networks while historical Base stays labelled", async () => {

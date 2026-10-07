@@ -26,7 +26,7 @@ export function validateMintConfiguration(
   now = new Date(),
 ) {
   if (!isMintNetwork(input.chainId))
-    throw new MintInputError("Choose a supported Arc or Ink network.");
+    throw new MintInputError("Choose a supported RH or Ink network.");
   if (
     !isAddress(input.contractAddress) ||
     input.contractAddress.toLowerCase() === zeroAddress

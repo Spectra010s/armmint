@@ -8,7 +8,7 @@ as other execution entry points.
 
 Create the bot through BotFather and configure `TELEGRAM_BOT_TOKEN`,
 `TELEGRAM_BOT_USERNAME`, and a random `TELEGRAM_WEBHOOK_SECRET`. Set
-`BETTER_AUTH_URL` to the public HTTPS application origin. Users select Arc or Ink in the mint flow. Runtime RPC overrides are per network; see [Multichain networks](multichain.md). The adapter verifies chain identity before network operations.
+`BETTER_AUTH_URL` to the public HTTPS application origin. Users select RH or Ink in the mint flow. Runtime RPC overrides are per network; see [Multichain networks](multichain.md). The adapter verifies chain identity before network operations.
 
 After deploying the application with its current database schema, run
 `pnpm telegram:setup` to register the private-chat command menu and webhook.
@@ -30,7 +30,7 @@ and never requests or returns private keys or seed phrases.
    quantity (1–100); the recipient variant uses the configured burner wallet.
    Other functions and allowlist proofs use public encoded calldata, up to
    1,800 bytes. The bot does not infer an ABI or obtain allowlist proofs.
-4. Enter the **total** native currency (USDC on Arc, ETH on Ink) value for the whole call, excluding gas.
+4. Enter the **total** ETH value for the whole call, excluding gas.
 5. Choose **Mint now** or enter a future UTC timestamp within one year.
 6. Review the network, contract, wallet, method/quantity, selector, call size,
    total native currency and scheduled time. **Confirm mint** creates the real scheduled job.

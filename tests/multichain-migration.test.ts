@@ -19,10 +19,10 @@ test("generated migration preserves Base data and enforces same-network replacem
     await db.exec(await readFile(new URL(files.find(f => f.startsWith("0005"))!, directory), "utf8"));
     assert.equal((await db.query<{chain_id: number}>("SELECT chain_id FROM mint_jobs")).rows[0].chain_id, 8453);
     assert.equal((await db.query<{chain_id: number}>("SELECT chain_id FROM transactions")).rows[0].chain_id, 8453);
-    await assert.rejects(db.exec("INSERT INTO transactions (id,execution_attempt_id,chain_id,nonce,replaces_transaction_id) VALUES ('bad','a',5042002,7,'t')"));
+    await assert.rejects(db.exec("INSERT INTO transactions (id,execution_attempt_id,chain_id,nonce,replaces_transaction_id) VALUES ('bad','a',46630,7,'t')"));
     await assert.rejects(db.exec("INSERT INTO transactions (id,execution_attempt_id,chain_id,nonce,replaces_transaction_id) VALUES ('bad','a',8453,8,'t')"));
     await db.exec("INSERT INTO transactions (id,execution_attempt_id,chain_id,nonce,replaces_transaction_id) VALUES ('replacement','a',8453,7,'t')");
-    await db.exec("INSERT INTO transactions (id,execution_attempt_id,chain_id,nonce,hash) VALUES ('arc','a',5042002,7,'hash')");
-    await assert.rejects(db.exec("INSERT INTO transactions (id,execution_attempt_id,chain_id,nonce,hash) VALUES ('duplicate','a',5042002,8,'hash')"));
+    await db.exec("INSERT INTO transactions (id,execution_attempt_id,chain_id,nonce,hash) VALUES ('rh','a',46630,7,'hash')");
+    await assert.rejects(db.exec("INSERT INTO transactions (id,execution_attempt_id,chain_id,nonce,hash) VALUES ('duplicate','a',46630,8,'hash')"));
   } finally { await db.close(); }
 });

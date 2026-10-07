@@ -308,7 +308,7 @@ export async function handleTelegramInput(
     if (action === "menu" || action === "help")
       return save(
         reply(
-          "ArmMint\nCreate a mint, review its contract and total native-currency value, then confirm. The worker checks the call before signing and tracks the transaction. Use a dedicated burner wallet with enough native currency for the mint and gas (USDC on Arc, ETH on Ink).\n\n/mint — new mint\n/jobs — your jobs and status\n/wallet — secure wallet setup\n/cancel — discard the current draft\n/back — previous step\n/start — menu\n\nDrafts expire after 30 minutes. Starting a new mint replaces the current draft. Never send keys or seed phrases here.",
+          "ArmMint\nCreate a mint, review its contract and total native-currency value, then confirm. The worker checks the call before signing and tracks the transaction. Use a dedicated burner wallet with enough ETH for the mint and gas on the selected network (RH and Ink both use ETH).\n\n/mint — new mint\n/jobs — your jobs and status\n/wallet — secure wallet setup\n/cancel — discard the current draft\n/back — previous step\n/start — menu\n\nDrafts expire after 30 minutes. Starting a new mint replaces the current draft. Never send keys or seed phrases here.",
           draft ? [[button("Resume draft", "resume")], ...menu] : menu,
         ),
       );
@@ -479,7 +479,7 @@ export async function handleTelegramInput(
       }
       if (draft.step === "network" && choice.startsWith("network-")) {
         const chainId = Number(choice.slice(8));
-        if (!isMintNetwork(chainId)) throw new MintInputError("Choose a supported Arc or Ink network.");
+        if (!isMintNetwork(chainId)) throw new MintInputError("Choose a supported RH or Ink network.");
         // Changing networks invalidates all contract/value inputs from the old one.
         draft = { id: draft.id, revision: draft.revision, walletAddress: draft.walletAddress, chainId, step: "contract" };
       } else if (

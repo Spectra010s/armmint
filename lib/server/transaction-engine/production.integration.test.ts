@@ -742,9 +742,9 @@ function multichainTransport(calls: { chainId: number; method: string }[], wrong
   }, { retryCount: 0 });
 }
 
-test("one worker routes Arc and Ink, isolates identical wallet nonces, and recovers confirmations without signing", async () => {
+test("one worker routes RH and Ink, isolates identical wallet nonces, and recovers confirmations without signing", async () => {
   await db.delete(mintJobs);
-  await insertJob("arc", 5042002);
+  await insertJob("rh", 46630);
   await insertJob("ink", 763373);
   const calls: { chainId: number; method: string }[] = [];
   const makeEngine = () => createProductionTransactionEngine({ transportForChain: multichainTransport(calls) });
@@ -753,7 +753,7 @@ test("one worker routes Arc and Ink, isolates identical wallet nonces, and recov
   await runWorkerTick(handler, "multi-worker");
   await runWorkerTick(handler, "multi-worker");
   const initial = await state();
-  assert.deepEqual(initial.txs.map(t => [t.chainId, t.nonce]).sort(), [[5042002, 7], [763373, 7]].sort());
+  assert.deepEqual(initial.txs.map(t => [t.chainId, t.nonce]).sort(), [[46630, 7], [763373, 7]].sort());
   assert.equal(decryptions, 2);
   for (const t of initial.txs) receipts.set(t.hash!, "success");
   // A new engine instance represents process restart; persisted chainId selects I/O.
@@ -763,13 +763,13 @@ test("one worker routes Arc and Ink, isolates identical wallet nonces, and recov
   assert.equal(decryptions, 2);
   assert.equal(broadcasts.length, 2);
   assert.ok((await state()).jobs.every(j => j.state === "SUCCEEDED"));
-  for (const chainId of [5042002, 763373]) {
+  for (const chainId of [46630, 763373]) {
     assert.ok(calls.some(c => c.chainId === chainId && c.method === "eth_call"));
     assert.ok(calls.some(c => c.chainId === chainId && c.method === "eth_getTransactionReceipt"));
   }
 });
 
-for (const chainId of [5042002, 763373]) {
+for (const chainId of [46630, 763373]) {
   test(`retry and same-nonce gas replacement stay on network ${chainId}`, async () => {
     await db.update(mintJobs).set({ chainId });
     const calls: { chainId: number; method: string }[] = [];
@@ -797,7 +797,7 @@ for (const chainId of [5042002, 763373]) {
 }
 
 test("wrong RPC network cannot confirm or sign an already submitted transaction", async () => {
-  await db.update(mintJobs).set({ chainId: 5042002 });
+  await db.update(mintJobs).set({ chainId: 46630 });
   const calls: { chainId: number; method: string }[] = [];
   const engine = await createProductionTransactionEngine({ transportForChain: multichainTransport(calls) });
   await runWorkerTick(async (job, attempt) => { await engine.executeClaimedJob(job.id, attempt); });
@@ -812,20 +812,20 @@ test("wrong RPC network cannot confirm or sign an already submitted transaction"
   assert.notEqual((await state()).jobs[0].state, "SUCCEEDED");
 });
 
-test("default worker routes Arc and Ink through their own runtime HTTP endpoints", async () => {
+test("default worker routes RH and Ink through their own runtime HTTP endpoints", async () => {
   await db.delete(mintJobs);
-  await insertJob("arc-http", 5042002);
+  await insertJob("rh-http", 46630);
   await insertJob("ink-http", 763373);
   immediateReceipt = "success";
-  const previousArc = process.env.ARC_TESTNET_RPC_URL;
+  const previousRh = process.env.RH_TESTNET_RPC_URL;
   const previousInk = process.env.INK_SEPOLIA_RPC_URL;
-  process.env.ARC_TESTNET_RPC_URL = "https://arc.example.test/rpc";
+  process.env.RH_TESTNET_RPC_URL = "https://rh.example.test/rpc";
   process.env.INK_SEPOLIA_RPC_URL = "https://ink.example.test/rpc";
   const urls = new Set<string>();
   const fetchMock = mock.method(globalThis, "fetch", async (url: unknown, init?: RequestInit) => {
     const endpoint = typeof url === "string" || url instanceof URL ? String(url) : (url as Request).url;
     urls.add(endpoint);
-    const chainId = endpoint === process.env.ARC_TESTNET_RPC_URL ? 5042002 : endpoint === process.env.INK_SEPOLIA_RPC_URL ? 763373 : 0;
+    const chainId = endpoint === process.env.RH_TESTNET_RPC_URL ? 46630 : endpoint === process.env.INK_SEPOLIA_RPC_URL ? 763373 : 0;
     assert.notEqual(chainId, 0);
     const body = JSON.parse(String(init?.body));
     const result = body.method === "eth_chainId" ? `0x${chainId.toString(16)}` : await rpc.request(body);
@@ -836,10 +836,10 @@ test("default worker routes Arc and Ink through their own runtime HTTP endpoints
     await runWorkerTick();
     assert.equal(urls.size, 2);
     assert.ok((await state()).jobs.every(job => job.state === "SUCCEEDED"));
-    assert.deepEqual(broadcasts.map(raw => parseTransaction(raw).chainId).sort(), [5042002, 763373].sort());
+    assert.deepEqual(broadcasts.map(raw => parseTransaction(raw).chainId).sort(), [46630, 763373].sort());
   } finally {
     fetchMock.mock.restore();
-    if (previousArc === undefined) delete process.env.ARC_TESTNET_RPC_URL; else process.env.ARC_TESTNET_RPC_URL = previousArc;
+    if (previousRh === undefined) delete process.env.RH_TESTNET_RPC_URL; else process.env.RH_TESTNET_RPC_URL = previousRh;
     if (previousInk === undefined) delete process.env.INK_SEPOLIA_RPC_URL; else process.env.INK_SEPOLIA_RPC_URL = previousInk;
   }
 });

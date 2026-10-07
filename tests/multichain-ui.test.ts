@@ -11,7 +11,7 @@ const { MintJobForm } = await import("../components/mint-job-form.tsx");
 afterEach(cleanup);
 after(() => window.happyDOM.abort());
 
-for (const [chainId, symbol, label] of [[5042002, "USDC", "Arc Testnet"], [763373, "ETH", "Ink Sepolia"]] as const) {
+for (const [chainId, symbol, label] of [[46630, "ETH", "Robinhood Chain Testnet"], [763373, "ETH", "Ink Sepolia"]] as const) {
   test(`web review submits explicit ${label} network and retries idempotently`, async () => {
     const calls: Record<string, unknown>[] = [];
     const fetchMock = mock.method(globalThis, "fetch", async (_url: string | URL | Request, options?: RequestInit) => {
