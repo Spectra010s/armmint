@@ -41,7 +41,7 @@ export function MintJobForm() {
       const form = new FormData(event.currentTarget);
       const network = getNetwork(Number(chainId));
       const value = String(form.get("value") ?? "");
-      if (!network || network.legacy || !/^(0|[1-9][0-9]*)(\.[0-9]{1,18})?$/.test(value)) { setError("Choose a network and enter a valid amount with at most 18 decimal places."); return; }
+      if (!network || !/^(0|[1-9][0-9]*)(\.[0-9]{1,18})?$/.test(value)) { setError("Choose a network and enter a valid amount with at most 18 decimal places."); return; }
       try {
         const scheduled = String(form.get("scheduled") ?? "");
         setDraft({ chainId: network.chain.id, contractAddress: String(form.get("contract")).trim(), calldata: String(form.get("calldata")).trim(), valueWei: parseUnits(value, network.chain.nativeCurrency.decimals).toString(), scheduledFor: scheduled ? new Date(scheduled).toISOString() : new Date().toISOString(), idempotencyKey: crypto.randomUUID() });
