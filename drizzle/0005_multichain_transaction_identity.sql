@@ -1,0 +1,4 @@
+DROP INDEX "transactions_hash_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "transactions_chain_hash_unique" ON "transactions" USING btree ("chain_id","hash") WHERE "transactions"."hash" IS NOT NULL;--> statement-breakpoint
+ALTER TABLE "transactions" ADD CONSTRAINT "transactions_replacement_identity_unique" UNIQUE("id","chain_id","nonce","execution_attempt_id");--> statement-breakpoint
+ALTER TABLE "transactions" ADD CONSTRAINT "transactions_replacement_same_network_fk" FOREIGN KEY ("replaces_transaction_id","chain_id","nonce","execution_attempt_id") REFERENCES "public"."transactions"("id","chain_id","nonce","execution_attempt_id") ON DELETE restrict ON UPDATE no action;

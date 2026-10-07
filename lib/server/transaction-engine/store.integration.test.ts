@@ -302,3 +302,12 @@ test("orphan replacement links are rejected by the database", async () => {
     assert.match(cause, /foreign key constraint/i);
   }
 });
+
+test("reservations and replacements reject a different persisted network", async () => {
+  const original = await reserveTransaction("attempt-1", 84532, 7);
+  await markTransactionSubmitted(original.id, "0xoriginal");
+  await assert.rejects(reserveReplacementTransaction(original.id, "attempt-1", 46630, 7), /does not match/);
+  await db.update(mintJobs).set({ chainId: 46630 }).where(eq(mintJobs.id, "job-1"));
+  await assert.rejects(reserveTransaction("attempt-1", 46630, 7), /network does not match/);
+  await assert.rejects(reserveReplacementTransaction(original.id, "attempt-1", 84532, 7), /does not match/);
+});

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  foreignKey,
   bigint,
   boolean,
   check,
@@ -12,6 +13,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  unique,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -331,9 +333,15 @@ export const transactions = pgTable(
       .notNull(),
   },
   (table) => [
-    uniqueIndex("transactions_hash_unique")
-      .on(table.hash)
+    uniqueIndex("transactions_chain_hash_unique")
+      .on(table.chainId, table.hash)
       .where(sql`${table.hash} IS NOT NULL`),
+    unique("transactions_replacement_identity_unique").on(table.id, table.chainId, table.nonce, table.executionAttemptId),
+    foreignKey({
+      name: "transactions_replacement_same_network_fk",
+      columns: [table.replacesTransactionId, table.chainId, table.nonce, table.executionAttemptId],
+      foreignColumns: [table.id, table.chainId, table.nonce, table.executionAttemptId],
+    }).onDelete("restrict"),
     index("transactions_attempt_idx").on(table.executionAttemptId),
     uniqueIndex("transactions_replaces_unique").on(table.replacesTransactionId),
     check("transactions_chain_id_positive", sql`${table.chainId} > 0`),

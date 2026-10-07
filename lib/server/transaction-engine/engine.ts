@@ -1,3 +1,5 @@
+import { getNetwork } from "@/lib/networks";
+import { getNetworkRpcUrl } from "@/lib/server/network-config";
 import type { TransactionChainAdapter, TransactionRequest } from "./types";
 
 export type ClaimedJobExecution = {
@@ -33,31 +35,31 @@ export function createTransactionEngine(
 export async function createProductionTransactionEngine(
   options: {
     rpcUrl?: string;
+    transportForChain?: (chainId: number) => import("viem").Transport;
     transport?: import("viem").Transport;
     confirmations?: number;
     retryPolicy?: import("./retry").RetryPolicy;
   } = {},
 ) {
   const { executeTransaction } = await import("./execute");
-  const { base, baseSepolia } = await import("viem/chains");
   const { createViemTransactionAdapter } = await import("./viem-adapter");
   const { loadClaimedMintJob, loadSigningWallet } = await import(
     "./claimed-job"
   );
   const { failUnsubmittedExecution } = await import("./failure");
   const { TransactionEngineError } = await import("./errors");
-  const rpcUrl = options.rpcUrl ?? process.env.BASE_RPC_URL;
-  if (!options.transport && !rpcUrl)
-    throw new Error("BASE_RPC_URL is required");
   return {
     async executeClaimedJob(jobId: string, attemptId: string) {
       try {
         const { job, request } = await loadClaimedMintJob(jobId, attemptId);
+        const network = getNetwork(job.chainId);
+        if (!network) throw new TransactionEngineError("INVALID_EXECUTION", "Unsupported job network");
+        const transport = options.transportForChain?.(job.chainId) ?? options.transport;
         const adapter = createViemTransactionAdapter({
-          chain: job.chainId === base.id ? base : baseSepolia,
+          chain: network.chain,
           address: request.from,
-          rpcUrl,
-          transport: options.transport,
+          rpcUrl: transport ? undefined : options.rpcUrl ?? getNetworkRpcUrl(job.chainId),
+          transport,
           confirmations: options.confirmations,
           loadEncryptedWallet: () =>
             loadSigningWallet(job.walletId, job.userId, request.from),

@@ -1,3 +1,4 @@
+import { getNetwork } from "@/lib/networks";
 import "server-only";
 import { and, eq } from "drizzle-orm";
 import { isAddress } from "viem";
@@ -19,7 +20,7 @@ export function buildMintTransaction(
     !/^0x(?:[0-9a-fA-F]{2}){4,}$/.test(job.calldata) ||
     !/^(0|[1-9][0-9]*)$/.test(job.valueWei) ||
     BigInt(job.valueWei) >= 2n ** 256n ||
-    ![8453, 84532].includes(job.chainId)
+    !getNetwork(job.chainId)
   ) {
     throw new TransactionEngineError(
       "INVALID_EXECUTION",

@@ -167,7 +167,7 @@ The database layer must enforce the invariants with uniqueness constraints and a
 
 ## Configuration boundaries
 
-ArmMint V1 has no required public runtime configuration. `DATABASE_URL`, `BETTER_AUTH_SECRET`, Google OAuth credentials, `ARMINT_ENCRYPTION_KEY`, Telegram credentials, and `RPC_URL` are server-only. They must not use the `NEXT_PUBLIC_` prefix or be imported into client components.
+ArmMint V1 has no required public runtime configuration. `DATABASE_URL`, `BETTER_AUTH_SECRET`, Google OAuth credentials, `ARMINT_ENCRYPTION_KEY`, Telegram credentials, and per-network RPC overrides are server-only. They must not use the `NEXT_PUBLIC_` prefix or be imported into client components.
 
 Server configuration is read through `lib/server/config.ts`, which is guarded by `server-only`. Required values are validated before use; database/RPC values must be valid URLs and the wallet encryption key must decode to exactly 32 bytes. Invalid configuration must fail with the variable name and validation problem, never the secret value.
 
@@ -205,3 +205,6 @@ The future feature should add a new job/action type rather than create a second 
 - Sponsored gas
 - Automated selling implementation
 - Complex portfolio management
+
+
+Network routing, nonce isolation and Base compatibility are described in [Multichain networks](multichain.md).

@@ -53,6 +53,8 @@ export async function executeTransaction(
     setExecutionStage(input.mintJobId, lease.id, state);
   try {
     let rows = await findJobTransactions(input.mintJobId);
+    if (lease.context.job.chainId !== input.request.chainId || rows.some((row) => row.chainId !== input.request.chainId))
+      throw new TransactionEngineError("INVALID_EXECUTION", "Persisted transaction network does not match job");
     const recovered = rows.length > 0;
     // Observe every signed candidate, including an original replaced locally.
     // A miner may include the original while the replacement is in flight.
