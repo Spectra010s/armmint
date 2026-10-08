@@ -447,6 +447,8 @@ test("shared validation and idempotency enforce backend invariants", async () =>
     { ...mint(), contractAddress: "0x0" },
     { ...mint(), calldata: `0x${"ab".repeat(32)}` },
     { ...mint(), valueWei: "-1" },
+    { ...mint(), maxGasWei: "-1" },
+    { ...mint(), maxGasWei: "1.5" },
     { ...mint(), scheduledFor: "not-a-date" },
   ])
     assert.throws(() => validateMintConfiguration(bad, now));

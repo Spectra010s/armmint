@@ -674,6 +674,36 @@ test("replacement that would exceed the budget is not signed", async () => {
   assert.ok(["RETRYING", "CONFIRMING"].includes(s.jobs[0].state));
 });
 
+test("gas estimate above budget fails closed before signing", async () => {
+  await db
+    .update(mintJobs)
+    .set({ maxGasWei: "1" })
+    .where(eq(mintJobs.id, "job"));
+  await tick();
+  const s = await state();
+  assert.equal(s.jobs[0].state, "FAILED");
+  assert.equal(s.attempts[0].failureCode, "GAS_BUDGET_EXCEEDED");
+  assert.equal(decryptions, 0);
+  assert.equal(broadcasts.length, 0);
+  assert.equal(s.txs.length, 0);
+});
+
+test("replacement that would exceed the budget is not signed", async () => {
+  await tick();
+  assert.equal((await state()).jobs[0].state, "CONFIRMING");
+  assert.equal(broadcasts.length, 1);
+  // Any bumped fee now exceeds the lowered budget.
+  await db
+    .update(mintJobs)
+    .set({ maxGasWei: "1" })
+    .where(eq(mintJobs.id, "job"));
+  await recover(replacementPolicy);
+  const s = await state();
+  assert.equal(broadcasts.length, 1);
+  assert.equal(decryptions, 1);
+  assert.ok(["RETRYING", "CONFIRMING"].includes(s.jobs[0].state));
+});
+
 test("mismatched job and attempt do not fail a different job", async () => {
   await db.update(mintJobs).set({ state: "CLAIMED" });
   const attempt = await startExecutionAttempt("job");
