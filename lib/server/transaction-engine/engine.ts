@@ -61,6 +61,7 @@ export async function createProductionTransactionEngine(
           rpcUrl: transport ? undefined : options.rpcUrl ?? getNetworkRpcUrl(job.chainId),
           transport,
           confirmations: options.confirmations,
+          maxGasWei: BigInt(job.maxGasWei),
           loadEncryptedWallet: () =>
             loadSigningWallet(job.walletId, job.userId, request.from),
         });

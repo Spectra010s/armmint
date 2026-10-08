@@ -8,6 +8,7 @@ export type MintDraft = {
     | "quantity"
     | "calldata"
     | "value"
+    | "gas"
     | "schedule"
     | "review";
   chainId?: number;
@@ -17,6 +18,7 @@ export type MintDraft = {
   quantity?: number;
   calldata?: string;
   valueWei?: string;
+  maxGasWei?: string;
   scheduledFor?: string;
 };
 export type TelegramButton =

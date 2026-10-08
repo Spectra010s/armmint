@@ -23,6 +23,9 @@ export function createViemTransactionAdapter(options: {
   address: `0x${string}`;
   loadEncryptedWallet: () => Promise<EncryptedPrivateKey>;
   confirmations?: number;
+  // Most the job owner will pay for gas, in native base units. Estimates at
+  // or below this submit; anything above fails closed before signing.
+  maxGasWei?: bigint;
 }): TransactionChainAdapter {
   const transport =
     options.transport ??
@@ -58,6 +61,17 @@ export function createViemTransactionAdapter(options: {
     if (chainId !== options.chain.id)
       throw new TransactionEngineError("INVALID_EXECUTION", "RPC chain does not match job");
   }
+  function checkGasBudget(gas: bigint, maxFeePerGas: bigint) {
+    if (
+      options.maxGasWei !== undefined &&
+      gas * maxFeePerGas > options.maxGasWei
+    ) {
+      throw new TransactionEngineError(
+        "GAS_BUDGET_EXCEEDED",
+        "Gas estimate exceeds the job's maximum",
+      );
+    }
+  }
   return {
     async prepare(request) {
       validate(request);
@@ -70,6 +84,7 @@ export function createViemTransactionAdapter(options: {
           data: request.data,
           value: request.value ?? 0n,
         });
+        checkGasBudget(gas, fees.maxFeePerGas);
         return {
           ...request,
           gas,
@@ -153,6 +168,8 @@ export function createViemTransactionAdapter(options: {
           "Signing requires prepared inputs and a durable hash checkpoint",
         );
       }
+      // Final gate: replacement fee bumps must also respect the budget.
+      checkGasBudget(request.gas, request.maxFeePerGas);
       const { gas, maxFeePerGas, maxPriorityFeePerGas } = request;
       let serialized: `0x${string}`;
       try {

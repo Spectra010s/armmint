@@ -478,7 +478,7 @@ test("authenticated web mint API persists RH/Ink, validates networks, scopes own
   const session = await login();
   await db.insert(wallets).values({ id: "web-wallet", userId: session.user.id, address: `0x${"11".repeat(20)}`, encryptedPrivateKey: "cipher", encryptionIv: "iv", encryptionAuthTag: "tag", encryptionKeyVersion: 1 });
   for (const chainId of [46630, 763373, 4663, 57073]) {
-    const input = { chainId, contractAddress: `0x${"22".repeat(20)}`, calldata: "0x12345678", valueWei: "0", scheduledFor: new Date().toISOString(), idempotencyKey: randomUUID() };
+    const input = { chainId, contractAddress: `0x${"22".repeat(20)}`, calldata: "0x12345678", valueWei: "0", maxGasWei: "5000000000000000", scheduledFor: new Date().toISOString(), idempotencyKey: randomUUID() };
     assert.equal((await POST(request(input, "https://evil.test"))).status, 403);
     for (const network of [0, 1, 8453, "763373"]) assert.equal((await POST(request({ ...input, chainId: network }))).status, 400);
     assert.equal((await POST(request({ ...input, userId: "someone-else" }))).status, 400);

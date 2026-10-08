@@ -20,6 +20,9 @@ export function buildMintTransaction(
     !/^0x(?:[0-9a-fA-F]{2}){4,}$/.test(job.calldata) ||
     !/^(0|[1-9][0-9]*)$/.test(job.valueWei) ||
     BigInt(job.valueWei) >= 2n ** 256n ||
+    !job.maxGasWei ||
+    !/^(0|[1-9][0-9]*)$/.test(job.maxGasWei) ||
+    BigInt(job.maxGasWei) >= 2n ** 256n ||
     !getNetwork(job.chainId)
   ) {
     throw new TransactionEngineError(

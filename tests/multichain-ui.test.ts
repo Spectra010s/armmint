@@ -26,9 +26,10 @@ for (const [chainId, symbol, label] of [[46630, "ETH", "Robinhood Chain Testnet"
       fireEvent.change(screen.getByLabelText("Contract address"), { target: { value: `0x${"22".repeat(20)}` } });
       fireEvent.change(screen.getByLabelText("Encoded mint calldata"), { target: { value: "0x12345678" } });
       fireEvent.change(screen.getByLabelText(`Total mint value (${symbol}), excluding gas`), { target: { value: "0.25" } });
+      fireEvent.change(screen.getByLabelText(/Most gas you will pay/, { exact: false }), { target: { value: "0.005" } });
       fireEvent.submit(screen.getByRole("button", { name: "Review mint" }).closest("form")!);
       assert.ok(screen.getByText(`Network: ${label}`));
-      assert.ok(screen.getByText(`Total: 0.25 ${symbol} + gas`));
+      assert.ok(screen.getByText(`Total: 0.25 ${symbol} + up to 0.005 ${symbol} gas`));
       assert.equal(calls.length, 0);
       fireEvent.click(screen.getByRole("button", { name: "Confirm mint" }));
       await waitFor(() => assert.match(screen.getByRole("alert").textContent!, /Retry uses the same/));
@@ -39,6 +40,7 @@ for (const [chainId, symbol, label] of [[46630, "ETH", "Robinhood Chain Testnet"
       assert.deepEqual(calls[0], calls[1]);
       assert.equal(calls[0].chainId, chainId);
       assert.equal(calls[0].valueWei, "250000000000000000");
+      assert.equal(calls[0].maxGasWei, "5000000000000000");
       assert.equal(screen.getByRole("link", { name: "View job and status" }).getAttribute("href"), "/dashboard/jobs/11111111-1111-4111-8111-111111111111");
     } finally { fetchMock.mock.restore(); }
   });

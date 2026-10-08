@@ -76,10 +76,10 @@ export function draftPrompt(draft: MintDraft): TelegramReply {
       );
     case "method":
       return reply(
-        `${label}Choose the contract's mint function. Check its verified ABI; contracts use different methods. Use encoded calldata for other functions or allowlist proofs.`,
+        `${label}How do you mint on this contract? Pick the one that matches. Most mints just need a quantity. If yours works differently, choose Encoded calldata and paste the full call data.`,
         [
-          [button("mint(uint256)", draftAction(draft, "quantity"))],
-          [button("mint(address,uint256)", draftAction(draft, "recipient"))],
+          [button("Mint to my wallet", draftAction(draft, "quantity"))],
+          [button("Mint with recipient address", draftAction(draft, "recipient"))],
           [button("Encoded calldata", draftAction(draft, "custom"))],
           ...rows,
         ],
@@ -99,6 +99,11 @@ export function draftPrompt(draft: MintDraft): TelegramReply {
         `${label}Send the TOTAL ${currency(draft.chainId)} to send to the contract, excluding gas (for example 0.02). For a free mint, send 0. This is the total for all NFTs, not the price per NFT.`,
         rows,
       );
+    case "gas":
+      return reply(
+        `${label}What is the most ${currency(draft.chainId)} you will pay for gas? Send an amount like 0.005. If the network wants more when your turn comes, ArmMint will skip the mint instead of overpaying. Gas is extra, on top of the mint price above.`,
+        rows,
+      );
     case "schedule":
       return reply(
         `${label}When should ArmMint try to mint?\nChoose Mint now, or send a UTC timestamp such as 2026-10-01T14:30:00Z. Scheduling is best-effort; gas fees apply and a mint is not guaranteed.`,
@@ -106,7 +111,7 @@ export function draftPrompt(draft: MintDraft): TelegramReply {
       );
     case "review":
       return reply(
-        `Review mint\nNetwork: ${network(draft.chainId)}\nContract: ${draft.contractAddress}\nWallet: ${draft.walletAddress}\nMethod: ${draft.method === "custom" ? "Custom calldata" : draft.method === "recipient" ? "mint(address,uint256)" : "mint(uint256)"}\n${draft.quantity ? `Quantity: ${draft.quantity}\n` : "Quantity/proofs: encoded in calldata\n"}Call selector: ${draft.calldata?.slice(0, 10)}\nCall size: ${((draft.calldata?.length ?? 2) - 2) / 2} bytes\nTotal value: ${formatEther(BigInt(draft.valueWei ?? "0"))} ${currency(draft.chainId)} + gas\nWhen: ${draft.scheduledFor === "now" ? "As soon as the worker is available" : dateText(draft.scheduledFor!)}\n\nConfirm only if these details match the mint you intend. Simulation runs before signing; a submitted transaction cannot be cancelled here.`,
+        `Review mint\nNetwork: ${network(draft.chainId)}\nContract: ${draft.contractAddress}\nWallet: ${draft.walletAddress}\nMethod: ${draft.method === "custom" ? "Custom calldata" : draft.method === "recipient" ? "Mint with recipient address" : "Mint to my wallet"}\n${draft.quantity ? `Quantity: ${draft.quantity}\n` : "Quantity/proofs: encoded in calldata\n"}Call selector: ${draft.calldata?.slice(0, 10)}\nCall size: ${((draft.calldata?.length ?? 2) - 2) / 2} bytes\nTotal value: ${formatEther(BigInt(draft.valueWei ?? "0"))} ${currency(draft.chainId)} + up to ${formatEther(BigInt(draft.maxGasWei ?? "0"))} ${currency(draft.chainId)} gas\nWhen: ${draft.scheduledFor === "now" ? "As soon as the worker is available" : dateText(draft.scheduledFor!)}\n\nConfirm only if these details match the mint you intend. Simulation runs before signing; a submitted transaction cannot be cancelled here.`,
         [[button("Confirm mint", draftAction(draft, "confirm"))], ...rows],
       );
   }
@@ -143,7 +148,8 @@ function back(draft: MintDraft) {
     quantity: "method",
     calldata: "method",
     value: draft.method === "custom" ? "calldata" : "quantity",
-    schedule: "value",
+    gas: "value",
+    schedule: "gas",
     review: "schedule",
   };
   draft.step = steps[draft.step];
@@ -195,7 +201,7 @@ async function showJob(
       },
     ]);
   return reply(
-    `Mint job ${job.id}\nStatus: ${labels[job.state]}\nNetwork: ${network(job.chainId)}\nContract: ${job.contractAddress}\nValue: ${formatEther(BigInt(job.valueWei))} ${currency(job.chainId)} + gas\nScheduled: ${dateText(job.scheduledFor)}${confirmed?.hash ? `\nTransaction: ${confirmed.hash}` : ""}\n\n${job.state === "SCHEDULED" ? "Cancellation is available until the worker claims this job." : "Execution has started or ended; cancellation is unavailable."}`,
+    `Mint job ${job.id}\nStatus: ${labels[job.state]}\nNetwork: ${network(job.chainId)}\nContract: ${job.contractAddress}\nValue: ${formatEther(BigInt(job.valueWei))} ${currency(job.chainId)} + up to ${formatEther(BigInt(job.maxGasWei))} ${currency(job.chainId)} gas\nScheduled: ${dateText(job.scheduledFor)}${confirmed?.hash ? `\nTransaction: ${confirmed.hash}` : ""}\n\n${job.state === "SCHEDULED" ? "Cancellation is available until the worker claims this job." : "Execution has started or ended; cancellation is unavailable."}`,
     rows,
   );
 }
@@ -457,6 +463,7 @@ export async function handleTelegramInput(
           contractAddress: draft.contractAddress!,
           calldata: draft.calldata!,
           valueWei: draft.valueWei!,
+          maxGasWei: draft.maxGasWei!,
           scheduledFor:
             draft.scheduledFor === "now"
               ? now.toISOString()
@@ -532,6 +539,17 @@ export async function handleTelegramInput(
                 `Enter a non-negative ${currency(draft.chainId)} amount with at most 18 decimal places, such as 0.02.`,
               );
             draft.valueWei = parseEther(text).toString();
+            draft.step = "gas";
+            break;
+          case "gas":
+            if (
+              !/^(0|[1-9][0-9]{0,59})(?:\.[0-9]{1,18})?$/.test(text) ||
+              parseEther(text) >= 2n ** 256n
+            )
+              throw new MintInputError(
+                `Enter the most ${currency(draft.chainId)} you will pay for gas, with at most 18 decimal places, such as 0.005.`,
+              );
+            draft.maxGasWei = parseEther(text).toString();
             draft.step = "schedule";
             break;
           case "schedule": {

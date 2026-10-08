@@ -3,7 +3,7 @@ import { useState } from "react";
 import { parseUnits, formatUnits } from "viem";
 import { MINT_NETWORKS, getNetwork, networkName, nativeSymbol } from "@/lib/networks";
 
-type Draft = { chainId: number; contractAddress: string; calldata: string; valueWei: string; scheduledFor: string; idempotencyKey: string };
+type Draft = { chainId: number; contractAddress: string; calldata: string; valueWei: string; maxGasWei: string; scheduledFor: string; idempotencyKey: string };
 export function MintJobForm() {
   const [chainId, setChainId] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -31,7 +31,7 @@ export function MintJobForm() {
       <p>Network: {networkName(draft.chainId)}</p>
       <p className="break-all">Contract: {draft.contractAddress}</p>
       <p className="break-all">Calldata: {draft.calldata}</p>
-      <p>Total: {formatUnits(BigInt(draft.valueWei), 18)} {nativeSymbol(draft.chainId)} + gas</p>
+      <p>Total: {formatUnits(BigInt(draft.valueWei), 18)} {nativeSymbol(draft.chainId)} + up to {formatUnits(BigInt(draft.maxGasWei), 18)} {nativeSymbol(draft.chainId)} gas</p>
       <p>Scheduled: {draft.scheduledFor}</p>
       <p>Execution uses your configured burner wallet. Submitted transactions cannot be cancelled.</p>
       <button disabled={busy} onClick={create} className="rounded bg-emerald-700 px-4 py-2">{busy ? "Creating…" : "Confirm mint"}</button>{" "}
@@ -41,10 +41,11 @@ export function MintJobForm() {
       const form = new FormData(event.currentTarget);
       const network = getNetwork(Number(chainId));
       const value = String(form.get("value") ?? "");
-      if (!network || !/^(0|[1-9][0-9]*)(\.[0-9]{1,18})?$/.test(value)) { setError("Choose a network and enter a valid amount with at most 18 decimal places."); return; }
+      const maxGas = String(form.get("maxGas") ?? "");
+      if (!network || !/^(0|[1-9][0-9]*)(\.[0-9]{1,18})?$/.test(value) || !/^(0|[1-9][0-9]*)(\.[0-9]{1,18})?$/.test(maxGas)) { setError("Choose a network and enter a valid amount and gas limit with at most 18 decimal places."); return; }
       try {
         const scheduled = String(form.get("scheduled") ?? "");
-        setDraft({ chainId: network.chain.id, contractAddress: String(form.get("contract")).trim(), calldata: String(form.get("calldata")).trim(), valueWei: parseUnits(value, network.chain.nativeCurrency.decimals).toString(), scheduledFor: scheduled ? new Date(scheduled).toISOString() : new Date().toISOString(), idempotencyKey: crypto.randomUUID() });
+        setDraft({ chainId: network.chain.id, contractAddress: String(form.get("contract")).trim(), calldata: String(form.get("calldata")).trim(), valueWei: parseUnits(value, network.chain.nativeCurrency.decimals).toString(), maxGasWei: parseUnits(maxGas, network.chain.nativeCurrency.decimals).toString(), scheduledFor: scheduled ? new Date(scheduled).toISOString() : new Date().toISOString(), idempotencyKey: crypto.randomUUID() });
       } catch { setError("Check the amount and scheduled time."); }
     }}>
       <label className="block">Network<select required value={chainId} onChange={(event) => setChainId(event.target.value)} className="mt-1 block w-full rounded border bg-neutral-900 p-2"><option value="">Choose RH or Ink</option>{MINT_NETWORKS.map(({ chain }) => <option key={chain.id} value={chain.id}>{chain.name} — {chain.testnet ? "testnet" : "mainnet"} ({chain.nativeCurrency.symbol})</option>)}</select></label>
@@ -53,6 +54,7 @@ export function MintJobForm() {
       <label className="block">Encoded mint calldata<textarea name="calldata" defaultValue={previous?.calldata} required maxLength={3602} className="block w-full rounded border bg-neutral-900 p-2" /></label>
       <p className="text-sm text-neutral-400">Use the verified contract’s mint selector and arguments. Never enter a private key or seed phrase here.</p>
       <label className="block">Total mint value ({chainId ? nativeSymbol(Number(chainId)) : "native currency"}), excluding gas<input name="value" required defaultValue={previous ? formatUnits(BigInt(previous.valueWei), 18) : "0"} inputMode="decimal" className="block w-full rounded border bg-neutral-900 p-2" /></label>
+      <label className="block">Most gas you will pay ({chainId ? nativeSymbol(Number(chainId)) : "native currency"}) — the mint is skipped if gas costs more<input name="maxGas" required defaultValue={previous ? formatUnits(BigInt(previous.maxGasWei), 18) : "0.005"} inputMode="decimal" className="block w-full rounded border bg-neutral-900 p-2" /></label>
       <label className="block">Scheduled time (your local time; blank for now)<input name="scheduled" type="datetime-local" value={scheduledInput} onChange={(event) => setScheduledInput(event.target.value)} className="block w-full rounded border bg-neutral-900 p-2" /></label>
       <button className="rounded bg-emerald-700 px-4 py-2">Review mint</button>
     </form>}

@@ -234,6 +234,9 @@ export const mintJobs = pgTable(
     // Encoded contract call, including quantity/proof arguments, supplied at scheduling.
     calldata: text("calldata"),
     valueWei: text("value_wei").default("0").notNull(),
+    // Most the user will pay for gas, in native base units. The engine never
+    // submits a transaction whose gas * maxFeePerGas exceeds this.
+    maxGasWei: text("max_gas_wei").default("0").notNull(),
     engineLeaseId: text("engine_lease_id"),
     engineLeaseExpiresAt: timestamp("engine_lease_expires_at", {
       withTimezone: true,

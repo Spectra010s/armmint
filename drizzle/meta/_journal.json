@@ -43,6 +43,13 @@
       "when": 1790434445815,
       "tag": "0005_multichain_transaction_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791465435176,
+      "tag": "0006_add_max_gas_budget",
+      "breakpoints": true
     }
   ]
 }

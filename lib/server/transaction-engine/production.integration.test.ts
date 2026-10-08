@@ -255,6 +255,7 @@ async function insertJob(id: string, chainId = 763373) {
       contractAddress: target,
       calldata,
       valueWei: "42",
+      maxGasWei: "1000000000000000000",
       scheduledFor: new Date(0),
       idempotencyKey: id,
     });
@@ -643,6 +644,36 @@ test("recent nonce advance waits for receipts instead of dropping", async () => 
   assert.equal((await state()).jobs[0].state, "SUCCEEDED");
 });
 
+test("gas estimate above budget fails closed before signing", async () => {
+  await db
+    .update(mintJobs)
+    .set({ maxGasWei: "1" })
+    .where(eq(mintJobs.id, "job"));
+  await tick();
+  const s = await state();
+  assert.equal(s.jobs[0].state, "FAILED");
+  assert.equal(s.attempts[0].failureCode, "GAS_BUDGET_EXCEEDED");
+  assert.equal(decryptions, 0);
+  assert.equal(broadcasts.length, 0);
+  assert.equal(s.txs.length, 0);
+});
+
+test("replacement that would exceed the budget is not signed", async () => {
+  await tick();
+  assert.equal((await state()).jobs[0].state, "CONFIRMING");
+  assert.equal(broadcasts.length, 1);
+  // Any bumped fee now exceeds the lowered budget.
+  await db
+    .update(mintJobs)
+    .set({ maxGasWei: "1" })
+    .where(eq(mintJobs.id, "job"));
+  await recover(replacementPolicy);
+  const s = await state();
+  assert.equal(broadcasts.length, 1);
+  assert.equal(decryptions, 1);
+  assert.ok(["RETRYING", "CONFIRMING"].includes(s.jobs[0].state));
+});
+
 test("mismatched job and attempt do not fail a different job", async () => {
   await db.update(mintJobs).set({ state: "CLAIMED" });
   const attempt = await startExecutionAttempt("job");
@@ -703,9 +734,10 @@ test("Telegram confirmation flows through production worker signing and status",
     return handleTelegramInput({ updateId: ++updateId, chatId: 101, identity: { id: 101n, username: null }, callback: { id: String(updateId), data: b.callback_data } }, config);
   };
   await click((await send("/mint"))!, "Ink Sepolia (testnet)");
-  await click((await send(target))!, "mint(uint256)");
+  await click((await send(target))!, "Mint to my wallet");
   await send("2");
-  const review = await click((await send("0"))!, "Mint now");
+  await send("0");
+  const review = await click((await send("1"))!, "Mint now");
   await click(review!, "Confirm mint");
   const [job] = await db.select().from(mintJobs);
   assert.equal(job.calldata, calldata);

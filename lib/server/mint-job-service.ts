@@ -17,6 +17,7 @@ export type MintConfiguration = {
   contractAddress: string;
   calldata: string;
   valueWei: string;
+  maxGasWei: string;
   scheduledFor: string;
 };
 export class MintInputError extends Error {}
@@ -45,6 +46,11 @@ export function validateMintConfiguration(
     BigInt(input.valueWei) >= 2n ** 256n
   )
     throw new MintInputError("Enter a valid transaction value.");
+  if (
+    !/^(0|[1-9][0-9]{0,77})$/.test(input.maxGasWei) ||
+    BigInt(input.maxGasWei) >= 2n ** 256n
+  )
+    throw new MintInputError("Enter the most gas you will pay, in wei.");
   const scheduledFor = new Date(input.scheduledFor);
   if (
     !Number.isFinite(scheduledFor.getTime()) ||
