@@ -1,0 +1,1 @@
+ALTER TABLE "mint_jobs" ADD COLUMN "max_gas_wei" text DEFAULT '0' NOT NULL;

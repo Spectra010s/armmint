@@ -29,15 +29,16 @@ export async function POST(request: Request) {
     let input: Record<string, unknown>;
     try { input = JSON.parse(body); } catch { throw new MintInputError("Enter a valid mint configuration."); }
     if (!input || typeof input !== "object" || Array.isArray(input) ||
-      Object.keys(input).some((key) => !["chainId", "contractAddress", "calldata", "valueWei", "scheduledFor", "idempotencyKey"].includes(key)) ||
+      Object.keys(input).some((key) => !["chainId", "contractAddress", "calldata", "valueWei", "maxGasWei", "scheduledFor", "idempotencyKey"].includes(key)) ||
       typeof input.chainId !== "number" || typeof input.contractAddress !== "string" ||
       typeof input.calldata !== "string" || typeof input.valueWei !== "string" ||
+      typeof input.maxGasWei !== "string" ||
       typeof input.scheduledFor !== "string" || typeof input.idempotencyKey !== "string" ||
       !/^[a-f0-9-]{36}$/.test(input.idempotencyKey))
       throw new MintInputError("Enter a valid mint configuration.");
     const job = await createMintJob(user.id, {
       chainId: input.chainId, contractAddress: input.contractAddress,
-      calldata: input.calldata, valueWei: input.valueWei, scheduledFor: input.scheduledFor,
+      calldata: input.calldata, valueWei: input.valueWei, maxGasWei: input.maxGasWei, scheduledFor: input.scheduledFor,
     }, `web:${input.idempotencyKey}`);
     return Response.json({ id: job.id, chainId: job.chainId, state: job.state }, { status: 201, headers });
   } catch (error) {

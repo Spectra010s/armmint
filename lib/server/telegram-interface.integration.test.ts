@@ -118,12 +118,13 @@ async function click(
   assert.ok(Buffer.byteLength(b.callback_data) <= 64);
   return handleTelegramInput(callback(b.callback_data, identity), config, at);
 }
-async function review(method = "mint(uint256)") {
+async function review(method = "Mint to my wallet") {
   await click(await send("/mint"), "Ink Sepolia (testnet)");
   let r = await send(contract);
   r = await click(r, method);
   r = await send(method === "Encoded calldata" ? "0x12345678" : "2");
   r = await send("0.02");
+  r = await send("0.005");
   return click(r, "Mint now");
 }
 const mint = () => ({
@@ -131,6 +132,7 @@ const mint = () => ({
   contractAddress: contract,
   calldata: "0x12345678",
   valueWei: "0",
+  maxGasWei: "5000000000000000",
   scheduledFor: now.toISOString(),
 });
 
@@ -170,7 +172,7 @@ test("secure linking remains the real single-use token service", async () => {
 });
 
 test("guided review creates a real scheduled job and existing worker builds its execution request", async () => {
-  const r = await review("mint(address,uint256)");
+  const r = await review("Mint with recipient address");
   assert.match(r!.text, /Review mint/);
   assert.match(r!.text, /Total value: 0.02 ETH/);
   assert.equal((await db.select().from(mintJobs)).length, 0);
@@ -228,13 +230,16 @@ test("validation rejects invalid addresses, quantities, ETH precision, calldata,
   await click(await send("/mint"), "Ink Sepolia (testnet)");
   assert.match((await send("bad-address"))!.text, /valid, non-zero/);
   let r = await send(contract);
-  r = await click(r, "mint(uint256)");
+  r = await click(r, "Mint to my wallet");
   for (const invalid of ["0", "101", "1.5", "-1"])
     assert.match((await send(invalid))!.text, /whole number/);
   await send("2");
   for (const invalid of ["-1", "1e2", "0.0000000000000000001", "NaN"])
     assert.match((await send(invalid))!.text, /non-negative ETH/);
   await send("0");
+  for (const invalid of ["-1", "abc"])
+    assert.match((await send(invalid))!.text, /most .* pay for gas/);
+  await send("0.005");
   for (const invalid of [
     "yesterday",
     "2026-09-23T11:00:00Z",
@@ -442,6 +447,8 @@ test("shared validation and idempotency enforce backend invariants", async () =>
     { ...mint(), contractAddress: "0x0" },
     { ...mint(), calldata: `0x${"ab".repeat(32)}` },
     { ...mint(), valueWei: "-1" },
+    { ...mint(), maxGasWei: "-1" },
+    { ...mint(), maxGasWei: "1.5" },
     { ...mint(), scheduledFor: "not-a-date" },
   ])
     assert.throws(() => validateMintConfiguration(bad, now));
@@ -473,16 +480,18 @@ test("Telegram requires explicit network selection and clears inputs when changi
 test("RH Telegram review, job creation, listing and explorer use ETH and the selected chain", async () => {
   await click(await send("/mint"), "Robinhood Chain Testnet (testnet)");
   let r = await send(contract);
-  await click(r, "mint(uint256)");
+  await click(r, "Mint to my wallet");
   r = await send("1");
   assert.match(r!.text, /TOTAL ETH/);
   await send("0.25");
+  await send("0.005");
   r = await click(await send("/start").then(menuReply => click(menuReply, "Resume draft")), "Mint now");
   assert.match(r!.text, /0.25 ETH/);
   await click(r, "Confirm mint");
   const [job] = await db.select().from(mintJobs);
   assert.equal(job.chainId, 46630);
   assert.equal(job.valueWei, "250000000000000000");
+  assert.equal(job.maxGasWei, "5000000000000000");
   assert.match(JSON.stringify(await send("/jobs")), /Robinhood Chain Testnet/);
   assert.match((await send(`/status ${job.id}`))!.text, /Robinhood Chain Testnet/);
 });

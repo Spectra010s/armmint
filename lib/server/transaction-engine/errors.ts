@@ -8,7 +8,8 @@ export type TransactionFailureCode =
   | "SUBMISSION_FAILED"
   | "CONFIRMATION_FAILED"
   | "REVERTED"
-  | "RETRY_EXHAUSTED";
+  | "RETRY_EXHAUSTED"
+  | "GAS_BUDGET_EXCEEDED";
 
 export class TransactionEngineError extends Error {
   readonly code: TransactionFailureCode;
