@@ -713,7 +713,7 @@ export async function handleTelegramInput(
               time.getTime() > now.getTime() + 365 * 86400_000
             )
               throw new MintInputError(
-                'Send a time like "in 5 hours", "14:30", "tomorrow" or "tomorrow 14:30" (all UTC), or choose Mint now.',
+                'That didn\'t parse as a future time. Send a time like "in 5 hours", "14:30", "tomorrow" or "tomorrow 14:30" (all UTC), or choose Mint now.',
               );
             draft.scheduledFor = time.toISOString();
             draft.step = "review";
