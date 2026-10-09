@@ -8,6 +8,7 @@ import {
   parseWalletSetupServerError,
   WALLET_SETUP_GENERIC_ERROR,
 } from "@/lib/wallet-setup";
+import { WalletAddress } from "@/components/wallet-address";
 
 type SetupStatus = "idle" | "success";
 
@@ -88,7 +89,9 @@ export function BurnerWalletWarning() {
   return (
     <section className="space-y-4 rounded-xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
       <div className="space-y-2">
-        <h2 className="text-base font-semibold">Use a dedicated burner wallet only</h2>
+        <h2 className="text-base font-semibold">
+          Use a dedicated burner wallet only
+        </h2>
         <p>
           Do not use your primary wallet or a wallet holding valuable assets.
           ArmMint stores the private key you submit encrypted on the server so
@@ -114,10 +117,15 @@ export function BurnerWalletWarning() {
       </label>
 
       {status === "success" ? (
-        <output className="block rounded-lg border border-zinc-200 bg-white p-3 text-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
-          Burner wallet connected{savedAddress ? ` for ${savedAddress}` : ""}.
-          The private key was never displayed and is stored encrypted
-          server-side.
+        <output className="block space-y-2 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-5">
+          <p className="text-sm font-semibold text-emerald-300">
+            ✓ Burner wallet connected
+          </p>
+          {savedAddress ? <WalletAddress address={savedAddress} /> : null}
+          <p className="text-sm leading-6 text-neutral-400">
+            The private key was never displayed and is stored encrypted
+            server-side.
+          </p>
         </output>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -159,7 +167,10 @@ export function BurnerWalletWarning() {
           </div>
 
           {error ? (
-            <p role="alert" className="text-sm font-medium text-red-700 dark:text-red-300">
+            <p
+              role="alert"
+              className="text-sm font-medium text-red-700 dark:text-red-300"
+            >
               {error}
             </p>
           ) : null}
