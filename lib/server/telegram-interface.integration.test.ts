@@ -246,7 +246,7 @@ test("validation rejects invalid addresses, quantities, ETH precision, calldata,
     "2027-02-30T12:00:00Z",
     "2026-10-01T12:00:00+01:00",
   ])
-    assert.match((await send(invalid))!.text, /future UTC time/);
+    assert.match((await send(invalid))!.text, /like "in 5 hours"/);
   assert.match((await send("2026-10-01T12:00:00Z"))!.text, /Review mint/);
   assert.equal((await db.select().from(mintJobs)).length, 0);
   await click(await send("/mint"), "Ink Sepolia (testnet)");
@@ -439,6 +439,17 @@ test("custom calldata schedules exactly and an overdue review must be corrected"
   assert.equal(job.calldata, "0x12345678");
   assert.equal(job.scheduledFor.toISOString(), "2026-09-23T12:02:00.000Z");
   assert.equal(await claimNextDueMintJob("worker", now), null);
+});
+
+test("relative schedule input resolves to review with exact times", async () => {
+  await click(await send("/mint"), "Ink Sepolia (testnet)");
+  await click(await send(contract), "Mint to my wallet");
+  await send("1");
+  await send("0.02");
+  await send("0.005");
+  const r = await send("in 5 hours");
+  assert.match(r!.text, /Review mint/);
+  assert.match(r!.text, /2026-09-23 17:00/);
 });
 
 test("shared validation and idempotency enforce backend invariants", async () => {

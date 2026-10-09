@@ -106,8 +106,16 @@ export function draftPrompt(draft: MintDraft): TelegramReply {
       );
     case "schedule":
       return reply(
-        `${label}When should ArmMint try to mint?\nChoose Mint now, or send a UTC timestamp such as 2026-10-01T14:30:00Z. Scheduling is best-effort; gas fees apply and a mint is not guaranteed.`,
-        [[button("Mint now", draftAction(draft, "now"))], ...rows],
+        `${label}When should ArmMint try to mint? All times are UTC.\nTap Mint now, a shortcut below, or just type it like "in 5 hours", "14:30", "Friday", "Friday 14:30", "the 18th" or "tomorrow 14:30". An exact date also works: 2026-10-01T14:30:00Z.`,
+        [
+          [button("Mint now", draftAction(draft, "now"))],
+          [
+            button("In 1 hour", draftAction(draft, "delay-3600")),
+            button("In 6 hours", draftAction(draft, "delay-21600")),
+          ],
+          [button("Tomorrow, same time", draftAction(draft, "delay-86400"))],
+          ...rows,
+        ],
       );
     case "review":
       return reply(
@@ -153,6 +161,135 @@ function back(draft: MintDraft) {
     review: "schedule",
   };
   draft.step = steps[draft.step];
+}
+// Human scheduling: "in 5 hours", "in 20 minutes", "in 2 days",
+// "tomorrow", "tomorrow 14:30", or a clock time like "14:30" (next
+// occurrence in UTC). Returns an ISO timestamp or null.
+export function parseScheduleText(text: string, now: Date): string | null {
+  const input = text.trim();
+  const relative = input.match(
+    /^in\s+(\d+)\s*(minutes?|hours?|days?)$/i,
+  );
+  if (relative) {
+    const amount = Number(relative[1]);
+    const unit =
+      /^minute/i.test(relative[2]) ? 60_000
+      : /^hour/i.test(relative[2]) ? 3_600_000
+      : 86_400_000;
+    const at = new Date(now.getTime() + amount * unit);
+    return at.getTime() > now.getTime() + 365 * 86400_000 ? null : (
+      at.toISOString()
+    );
+  }
+  const day = now.getUTCDate();
+  const month = now.getUTCMonth();
+  const year = now.getUTCFullYear();
+  const clock = (h: number, m: number, base: Date) => {
+    const at = new Date(
+      Date.UTC(
+        base.getUTCFullYear(),
+        base.getUTCMonth(),
+        base.getUTCDate(),
+        h,
+        m,
+        0,
+      ),
+    );
+    return at <= now ? new Date(at.getTime() + 86400_000) : at;
+  };
+  const parseClock = (h: string, m: string | undefined, ap: string | undefined) => {
+    let hour = Number(h);
+    const minute = m === undefined ? 0 : Number(m);
+    if (minute > 59) return null;
+    if (ap && hour >= 1 && hour <= 12) {
+      if (/pm/i.test(ap) && hour < 12) hour += 12;
+      if (/am/i.test(ap) && hour === 12) hour = 0;
+    } else if (!ap && hour > 23) return null;
+    else if (ap && (hour < 1 || hour > 23)) return null;
+    return { hour, minute };
+  };
+  const WEEKDAYS: Record<string, number> = {
+    sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5,
+    saturday: 6,
+  };
+  const weekday = input.match(
+    /^(?:(next)\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?$/i,
+  );
+  if (weekday) {
+    const target = WEEKDAYS[weekday[2].toLowerCase()];
+    const parsed = weekday[3] === undefined ? null : parseClock(weekday[3], weekday[4], weekday[5]);
+    if (weekday[3] !== undefined && !parsed) return null;
+    const base = new Date(Date.UTC(year, month, day));
+    let delta = (target - base.getUTCDay() + 7) % 7;
+    let at: Date;
+    if (parsed) {
+      at = new Date(Date.UTC(year, month, day + delta, parsed.hour, parsed.minute, 0));
+      if (at <= now) at = new Date(at.getTime() + 7 * 86400_000);
+      if (weekday[1]) at = new Date(at.getTime() + (delta === 0 ? 7 * 86400_000 : 0));
+    } else {
+      if (delta === 0) delta = 7;
+      else if (weekday[1]) delta += 0;
+      at = new Date(
+        Date.UTC(year, month, day + delta, now.getUTCHours(), now.getUTCMinutes(), 0),
+      );
+      if (at <= now) at = new Date(at.getTime() + 7 * 86400_000);
+    }
+    return at.getTime() > now.getTime() + 365 * 86400_000 ? null : at.toISOString();
+  }
+  const tomorrow = input.match(
+    /^tomorrow(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?$/i,
+  );
+  if (tomorrow) {
+    if (tomorrow[1] === undefined) {
+      const at = new Date(
+        Date.UTC(year, month, day, now.getUTCHours(), now.getUTCMinutes(), 0) +
+          86400_000,
+      );
+      return at.toISOString();
+    }
+    const parsed = parseClock(tomorrow[1], tomorrow[2], tomorrow[3]);
+    if (!parsed) return null;
+    return new Date(
+      Date.UTC(year, month, day, parsed.hour, parsed.minute, 0) + 86400_000,
+    ).toISOString();
+  }
+  const monthday = input.match(
+    /^(?:on\s+(?:the\s+)?)?(\d{1,2})(st|nd|rd|th)(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?$/i,
+  );
+  if (monthday) {
+    const dom = Number(monthday[1]);
+    if (dom < 1 || dom > 31) return null;
+    const parsed =
+      monthday[3] === undefined
+        ? { hour: 0, minute: 0 }
+        : parseClock(monthday[3], monthday[4], monthday[5]);
+    if (!parsed) return null;
+    // Walk forward month by month to the next future occurrence (skips
+    // months that lack the day, e.g. Feb 30th rolls to Mar 30th).
+    for (let step = 0; step < 13; step++) {
+      const base = new Date(Date.UTC(year, month + step, 1));
+      const candidate = new Date(
+        Date.UTC(
+          base.getUTCFullYear(),
+          base.getUTCMonth(),
+          dom,
+          parsed.hour,
+          parsed.minute,
+          0,
+        ),
+      );
+      if (candidate.getUTCDate() !== dom) continue;
+      if (candidate > now) return candidate.toISOString();
+    }
+    return null;
+  }
+  const bare = input.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (bare) {
+    const parsed = parseClock(bare[1], bare[2], bare[3]);
+    if (!parsed) return null;
+    return clock(parsed.hour, parsed.minute, now).toISOString();
+  }
+  return null;
 }
 // Reject likely secrets before routing typed input, and never echo rejected text.
 export function looksSensitive(text: string) {
@@ -500,6 +637,16 @@ export async function handleTelegramInput(
       } else if (draft.step === "schedule" && choice === "now") {
         draft.scheduledFor = "now";
         draft.step = "review";
+      } else if (draft.step === "schedule" && choice.startsWith("delay-")) {
+        const seconds = Number(choice.slice("delay-".length));
+        if (
+          !Number.isSafeInteger(seconds) ||
+          seconds < 60 ||
+          seconds > 365 * 86400
+        )
+          throw new MintInputError("That preset time is unavailable. Choose Mint now or send a UTC timestamp.");
+        draft.scheduledFor = new Date(now.getTime() + seconds * 1000).toISOString();
+        draft.step = "review";
       } else if (choice === "text" && text) {
         switch (draft.step) {
           case "contract":
@@ -553,16 +700,20 @@ export async function handleTelegramInput(
             draft.step = "schedule";
             break;
           case "schedule": {
-            const time = new Date(text);
+            const exact =
+              /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(text) &&
+              Number.isFinite(new Date(text).getTime()) &&
+              new Date(text).toISOString() === text.replace("Z", ".000Z")
+                ? new Date(text).toISOString()
+                : parseScheduleText(text, now);
+            const time = exact ? new Date(exact) : new Date(NaN);
             if (
-              !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(text) ||
-              !Number.isFinite(time.getTime()) ||
-              time.toISOString() !== text.replace("Z", ".000Z") ||
+              !exact ||
               time <= now ||
               time.getTime() > now.getTime() + 365 * 86400_000
             )
               throw new MintInputError(
-                "Use a future UTC time within one year: YYYY-MM-DDTHH:MM:SSZ, or choose Mint now.",
+                'Send a time like "in 5 hours", "14:30", "tomorrow" or "tomorrow 14:30" (all UTC), or choose Mint now.',
               );
             draft.scheduledFor = time.toISOString();
             draft.step = "review";
